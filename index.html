@@ -2193,10 +2193,11 @@ function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   if (hitImpacts.length < 30) hitImpacts.push(new BulletHitImpactFX(e.x, e.y, bType));
 
   if (e.isHeavy) {
-    e.shieldHits = (e.shieldHits || 0) + 1;
+    const hitAmount = (bType === "MISSILE_NEEDLE") ? 2.5 : 1;
+    e.shieldHits = (e.shieldHits || 0) + hitAmount;
     if (explosions.length < 35) explosions.push(new ExplosionFX(e.x, e.y, "#cbd5e1"));
     playTone(600, 0.05, "sawtooth", -100, 0.08);
-    if (e.shieldHits >= 8) {
+    if (e.shieldHits >= 20) {
       safeKillEnemy(e, "#cbd5e1");
     }
     return;
@@ -3450,20 +3451,21 @@ function safeGameLoop(now) {
       ctx.save();
       ctx.globalAlpha = 0.70;
 
-      const pPulse = Math.sin(curTime * 8) * 3 + 12;
+      const pPulse = Math.sin(curTime * 8) * 2 + 8;
       ctx.strokeStyle = "#ff007f";
       ctx.lineWidth = 1.68;
       const curPType = player ? player.pType : 0;
       if (curPType === 2) {
-        const twinCannonOffsets = [-14, 14];
+        const twinCannonOffsets = [-15, 15];
         for (let i = 0; i < twinCannonOffsets.length; i++) {
           ctx.beginPath();
-          ctx.arc(shipCenterX + twinCannonOffsets[i], shipCenterY - 14, pPulse * 0.75, 0, Math.PI * 2);
+          ctx.arc(shipCenterX + twinCannonOffsets[i], shipCenterY - 35, pPulse, 0, Math.PI * 2);
           ctx.stroke();
         }
       } else {
+        const noseYOffset = (curPType === 4) ? -38 : ((curPType === 0) ? -34 : -32);
         ctx.beginPath();
-        ctx.arc(shipCenterX, shipCenterY - 8, pPulse, 0, Math.PI * 2);
+        ctx.arc(shipCenterX, shipCenterY + noseYOffset, pPulse, 0, Math.PI * 2);
         ctx.stroke();
       }
 
@@ -3652,8 +3654,18 @@ function safeGameLoop(now) {
         ctx.fill();
 
         const isRec = (c.code === recommendedSkillCode);
-        if (isRec && isRecFlash && !c.active) {
-          ctx.strokeStyle = "#ffffff";
+        if (isRec && !c.active) {
+          const hazeBaseAlpha = isRecFlash ? 0.35 : 0.18;
+          const dustColor = isRecFlash ? "255, 255, 255" : "0, 245, 255";
+          for (let layer = 3; layer >= 1; layer--) {
+            ctx.save();
+            ctx.strokeStyle = `rgba(${dustColor}, ${(hazeBaseAlpha / layer).toFixed(3)})`;
+            ctx.lineWidth = 2.5 + layer * 2.5;
+            drawRoundRect(ctx, c.x, c.y, c.w, c.h, 10);
+            ctx.stroke();
+            ctx.restore();
+          }
+          ctx.strokeStyle = isRecFlash ? "#ffffff" : "#00f5ff";
           ctx.lineWidth = 2.5;
         } else {
           ctx.strokeStyle = c.col;
