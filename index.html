@@ -960,14 +960,15 @@ class Player {
       playTone(700, 0.07, "square", -300, 0.08);
     }
   }
-  shoot(curTime, bullets) {
+shoot(curTime, bullets) {
     if (!this.isAlive) return;
     if (curTime - this.lastShot >= this.getFireInterval()) {
       this.lastShot = curTime;
       this.shotCount++;
       let baseDmg = Math.max(1, this.powerStat || 1);
       if (this.pType === 1) baseDmg = 1 + (this.powerStat - 1) * 2.2;
-      const dmg = baseDmg * 1.2;
+      const dmgMultiplier = (this.pType === 4 || this.name === "Legend") ? 0.84 : 1.2;
+      const dmg = baseDmg * dmgMultiplier;
       this._fire(this.x, this.y, dmg, bullets);
       if (this.clonePlaneTimer > 0) this._fire(this.x + 42, this.y, dmg, bullets);
     }
@@ -2417,10 +2418,11 @@ function startBattle(type) {
   sessionStartTime = performance.now();
   sessionSecurityKey = Math.random().toString(36).substring(2, 10);
 
-  if (type === 3) {
+if (type === 3) {
     const bStats = generateBalancedStats();
     if (Math.random() < 0.10) {
-      player = new Player(4, "Legend", bStats.m, bStats.p, bStats.r);
+      const remainingStats = [bStats.m, bStats.r].sort(() => Math.random() - 0.5);
+      player = new Player(4, "Legend", remainingStats[0], 1, remainingStats[1]);
       gameState = 4;
       legendShowcaseStartTime = performance.now() / 1000;
       playTone(523, 0.4, "triangle", 200, 0.15);
