@@ -32,7 +32,7 @@ const nameInput = document.getElementById("name-input");
 
 const LOGICAL_WIDTH = 450;
 const LOGICAL_HEIGHT = 800;
-const VERSION_STR = "v20261011.TwinEngineSafe";
+const VERSION_STR = "v20261011.001";
 const FIREBASE_URL = "https://flywm-d0b39-default-rtdb.asia-southeast1.firebasedatabase.app/leaderboard.json";
 const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Malgun Gothic', sans-serif";
 
@@ -1290,7 +1290,7 @@ class StationaryMissileLaser {
     }
   }
 
-  draw() {
+draw() {
     if (this.life <= 0 || this.path.length < 2) return;
     const progress = 1.0 - (this.life / this.totalLife);
     const alpha = Math.max(0, this.life / this.totalLife);
@@ -1303,40 +1303,34 @@ class StationaryMissileLaser {
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
 
-    // 7. 꺾일 때마다 기본 대비 50%씩 색상 연화 (1배 -> 0.5배 -> 0.25배)
-    for (let i = 0; i < renderPath.length - 1; i++) {
-      const p1 = renderPath[i];
-      const p2 = renderPath[i + 1];
-      const segAlpha = alpha * Math.pow(0.5, i);
+    // 2. 전체 경로(시작점 -> 종료점)를 잇는 부드러운 연속 그라데이션 적용
+    const startPt = renderPath[0];
+    const endPt = renderPath[renderPath.length - 1];
+    const beamGradOuter = ctx.createLinearGradient(startPt.x, startPt.y, endPt.x, endPt.y);
+    beamGradOuter.addColorStop(0, `rgba(0, 245, 255, ${0.45 * alpha})`);
+    beamGradOuter.addColorStop(0.5, `rgba(0, 220, 255, ${0.28 * alpha})`);
+    beamGradOuter.addColorStop(1, `rgba(0, 180, 255, ${0.12 * alpha})`);
 
-      ctx.globalAlpha = segAlpha;
-      ctx.strokeStyle = "rgba(0, 245, 255, 0.45)";
-      ctx.lineWidth = 6.86;
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+    const beamGradInner = ctx.createLinearGradient(startPt.x, startPt.y, endPt.x, endPt.y);
+    beamGradInner.addColorStop(0, `rgba(255, 255, 255, ${1.0 * alpha})`);
+    beamGradInner.addColorStop(0.5, `rgba(230, 250, 255, ${0.65 * alpha})`);
+    beamGradInner.addColorStop(1, `rgba(200, 240, 255, ${0.25 * alpha})`);
 
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 1.96;
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
-    }
+    // 외곽 빔
+    ctx.strokeStyle = beamGradOuter;
+    ctx.lineWidth = 6.86;
+    ctx.beginPath();
+    ctx.moveTo(renderPath[0].x, renderPath[0].y);
+    for (let i = 1; i < renderPath.length; i++) ctx.lineTo(renderPath[i].x, renderPath[i].y);
+    ctx.stroke();
 
-    // 7. 꺾임 지점 번개 스파크 효과
-    this.sparks.forEach(sp => {
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = "#ffe600";
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.moveTo(sp.x - 6, sp.y - 4);
-      ctx.lineTo(sp.x, sp.y);
-      ctx.lineTo(sp.x - 3, sp.y + 2);
-      ctx.lineTo(sp.x + 6, sp.y + 6);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(sp.x + 5, sp.y - 5);
-      ctx.lineTo(sp.x, sp.y);
-      ctx.lineTo(sp.x + 2, sp.y + 3);
-      ctx.lineTo(sp.x - 5, sp.y + 7);
-      ctx.stroke();
-    });
+    // 중심 빔
+    ctx.strokeStyle = beamGradInner;
+    ctx.lineWidth = 1.96;
+    ctx.beginPath();
+    ctx.moveTo(renderPath[0].x, renderPath[0].y);
+    for (let i = 1; i < renderPath.length; i++) ctx.lineTo(renderPath[i].x, renderPath[i].y);
+    ctx.stroke();
 
     if (this.reflectedShards.length > 0) {
       this.reflectedShards.forEach(sh => {
@@ -2177,13 +2171,13 @@ function safeKillEnemy(e, customColor="#ffe600") {
 function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   hitImpacts.push(new BulletHitImpactFX(e.x, e.y, bType));
 
-if (e.isHeavy) {
-    e.shieldHits = (e.shieldHits || 0) + 1; // 레이저 1회 적중 시 1카운트 누적
+  // 4. 돌맹이(엘리트): 어떤 기체의 공격이든 8회 피격 시 파괴 & safeKillEnemy에서 5점 지급
+  if (e.isHeavy) {
+    e.shieldHits = (e.shieldHits || 0) + 1;
     explosions.push(new ExplosionFX(e.x, e.y, "#cbd5e1"));
     playTone(600, 0.05, "sawtooth", -100, 0.08);
-    // 8회 공격 시 파괴 (safeKillEnemy 내부에서 5점 획득 처리)
     if (e.shieldHits >= 8) {
-      safeKillEnemy(e, "#cbd5e1");
+      safeKillEnemy(e, "#cbd5e1"); // e.isHeavy 체크로 정확히 5점 가산
     }
     return;
   }  if (e.hasShield) {
@@ -2582,10 +2576,11 @@ function handlePointerDown(e) {
   } else if (gameState === 2 && !randomPickShowcaseActive) {
     // 3. 상단 스탯 상태창 터치 시 2배 확대 (0.3초간)
    const statBoxes = [
-      { x: 35, y: 80, w: 115, h: 58 },
-      { x: 167, y: 80, w: 115, h: 58 },
-      { x: 300, y: 80, w: 115, h: 58 }
-    ];    for (let i = 0; i < statBoxes.length; i++) {
+      { x: 35, y: 122, w: 115, h: 54 },
+      { x: 167, y: 122, w: 115, h: 54 },
+      { x: 300, y: 122, w: 115, h: 54 }
+    ];
+  for (let i = 0; i < statBoxes.length; i++) {
       let sb = statBoxes[i];
       if (coords.x >= sb.x && coords.x <= sb.x + sb.w && coords.y >= sb.y && coords.y <= sb.y + sb.h) {
         statZoomIndex = i;
@@ -2603,14 +2598,15 @@ function handlePointerDown(e) {
       else if (picked.type === "MSL") player.missileStat += picked.val;
       else if (picked.type === "RATE") player.fireRateStat += picked.val;
 
-      if (picked.val > 1) {
-        randomPickResult = picked;
-        randomPickShowcaseActive = true;
-        randomPickShowcaseStartTime = performance.now() / 1000;
-        playTone(523, 0.15, "triangle", 0, 0.15);
-      } else {
-        playChosenImmediateReturn();
-      }
+      // 3. X1도 동일하게 팝업창을 띄우되, 축하 문구 분기 처리
+      randomPickResult = {
+        label: picked.label,
+        col: picked.col,
+        header: picked.val > 1 ? "★ BONUS MULTIPLIER WON! ★" : "★ UPGRADE CONFIRMED! ★"
+      };
+      randomPickShowcaseActive = true;
+      randomPickShowcaseStartTime = performance.now() / 1000;
+      playTone(523, 0.15, "triangle", 0, 0.15);
       return;
     }
 
@@ -3308,18 +3304,79 @@ function safeGameLoop(now) {
       ctx.restore();
 
 } else if (gameState === 2) {
-      // 3. 상하단 균등 여백 배치 (Y 오프셋 재정렬)
       ctx.textAlign = "center";
       ctx.fillStyle = "#00f5ff";
-      ctx.font = `bold 20px ${FONT_FAMILY}`;
-      ctx.fillText("PILOT SKILL STATUS", LOGICAL_WIDTH / 2, 55);
+      ctx.font = `bold 18px ${FONT_FAMILY}`;
+      ctx.fillText("PILOT SKILL STATUS", LOGICAL_WIDTH / 2, 32);
+
+      // 1. 비행기 부위 강조 및 업그레이드 검토창 신설 (폭 380px, 높이 70px)
+      const inspectBox = { x: 35, y: 44, w: 380, h: 70 };
+      ctx.save();
+      ctx.fillStyle = "rgba(8, 14, 30, 0.92)";
+      drawRoundRect(ctx, inspectBox.x, inspectBox.y, inspectBox.w, inspectBox.h, 8);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0, 245, 255, 0.6)";
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+
+      // 업그레이드 검토 스캔 라인 애니메이션
+      const scanY = inspectBox.y + ((curTime * 35) % inspectBox.h);
+      ctx.strokeStyle = "rgba(0, 245, 255, 0.35)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(inspectBox.x + 4, scanY);
+      ctx.lineTo(inspectBox.x + inspectBox.w - 4, scanY);
+      ctx.stroke();
+
+      // 검토 상태 텍스트
+      ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(0, 245, 255, 0.8)";
+      ctx.font = `bold 10px ${FONT_FAMILY}`;
+      ctx.fillText("DIAGNOSTIC: INSPECTING MODULES...", inspectBox.x + 12, inspectBox.y + 16);
+
+      // 중앙 비행기 렌더링
+      const shipCenterX = inspectBox.x + inspectBox.w / 2;
+      const shipCenterY = inspectBox.y + 38;
+      ctx.save();
+      ctx.translate(shipCenterX, shipCenterY);
+      let shipCol = "#00f5ff";
+      if (player && (player.name === "Legend" || player.pType === 4)) shipCol = "#ffd700";
+      else if (player && player.pType === 1) shipCol = "#ff2244";
+      else if (player && player.pType === 2) shipCol = "#00ff66";
+      drawVectorPlayer(ctx, player ? player.pType : 0, shipCol, 0.75, 0, false);
+      ctx.restore();
+
+      // 부위 강조: 파워 (중앙 코어 조준원)
+      const pPulse = Math.sin(curTime * 8) * 2 + 6;
+      ctx.strokeStyle = "#ff0080";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(shipCenterX, shipCenterY - 4, pPulse, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 부위 강조: 미사일 (양 날개 포드 강조 박스)
+      const mPulse = Math.sin(curTime * 10) * 1.5 + 4;
+      ctx.strokeStyle = "#00f5ff";
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(shipCenterX - 22 - mPulse / 2, shipCenterY + 4 - mPulse / 2, mPulse, mPulse);
+      ctx.strokeRect(shipCenterX + 22 - mPulse / 2, shipCenterY + 4 - mPulse / 2, mPulse, mPulse);
+
+      // 부위 강조: 발사 속도 (후방 추진기 점멸 화살표)
+      ctx.fillStyle = "#ffe600";
+      ctx.beginPath();
+      ctx.moveTo(shipCenterX - 4, shipCenterY + 16);
+      ctx.lineTo(shipCenterX + 4, shipCenterY + 16);
+      ctx.lineTo(shipCenterX, shipCenterY + 22);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
 
       const statBoxes = [
-        { title: "POWER", lv: player ? Math.round(player.powerStat) : 1, col: "#ff0080", x: 35, y: 80, w: 115, h: 58 },
-        { title: "MISSILE", lv: player ? Math.round(player.missileStat) : 1, col: "#00f5ff", x: 167, y: 80, w: 115, h: 58 },
-        { title: "RATE", lv: player ? Math.round(player.fireRateStat) : 1, col: "#ffe600", x: 300, y: 80, w: 115, h: 58 }
+        { title: "POWER", lv: player ? Math.round(player.powerStat) : 1, col: "#ff0080", x: 35, y: 122, w: 115, h: 54 },
+        { title: "MISSILE", lv: player ? Math.round(player.missileStat) : 1, col: "#00f5ff", x: 167, y: 122, w: 115, h: 54 },
+        { title: "RATE", lv: player ? Math.round(player.fireRateStat) : 1, col: "#ffe600", x: 300, y: 122, w: 115, h: 54 }
       ];
-
       const isZooming = (statZoomIndex >= 0 && (curTime - statZoomStartTime < 0.3));
 
       statBoxes.forEach((sb, idx) => {
@@ -3486,7 +3543,8 @@ function safeGameLoop(now) {
         ctx.textAlign = "center";
         ctx.fillStyle = "#ffd700";
         ctx.font = `bold 18px ${FONT_FAMILY}`;
-        ctx.fillText("★ UPGRADE CONFIRMED! ★", LOGICAL_WIDTH / 2, popY + 45);
+        const topHeader = (randomPickResult && randomPickResult.header) ? randomPickResult.header : "★ UPGRADE CONFIRMED! ★";
+        ctx.fillText(topHeader, LOGICAL_WIDTH / 2, popY + 45);
         ctx.fillStyle = randomPickResult.col;
         ctx.font = `bold 30px ${FONT_FAMILY}`;
         ctx.fillText(randomPickResult.label, LOGICAL_WIDTH / 2, popY + 105);
