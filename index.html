@@ -346,7 +346,7 @@ function startBGMEngine() {
       mOsc.start(now); mOsc.stop(now + 0.16);
     }
     bgmStep = (bgmStep + 1) % 80;
-  }, 125);
+  }, 95); // 125ms -> 95ms로 단축 (BPM 약 120 -> 160 수준으로 가속)
 }
 
 // =================================================================
@@ -1133,7 +1133,7 @@ class Player {
     let isBlackHoleShot = (this.pType === 1 && this.shotCount % 5 === 0);
 
     if (this.name === "Legend" || this.pType === 4) {
-      bullets.push(new Bullet(px, py - 22, 0, -17, dmg, 4.5, "LEGEND"));
+      bullets.push(new Bullet(px, py - 22, 0, -22, dmg, 4.5, "LEGEND"));
       bullets.push(new Bullet(px, py - 22, -1.0, -17, dmg, 4.5, "LEGEND"));
       bullets.push(new Bullet(px, py - 22, 1.0, -17, dmg, 4.5, "LEGEND"));
       playTone(900, 0.08, "triangle", -400, 0.1);
@@ -1297,9 +1297,9 @@ class HomingMissile {
       let diff = angleToTarget - curAngle;
       while (diff < -Math.PI) diff += Math.PI * 2;
       while (diff > Math.PI) diff -= Math.PI * 2;
-      const turnRate = 5.5 * dt;
+      const turnRate = 7.0 * dt;  // 선회력 상향
       const newAngle = curAngle + Math.max(-turnRate, Math.min(turnRate, diff));
-      const spd = 12.5;
+      const spd = 16.5;           // 미사일 속도 32% 증가 (기존 12.5)
       this.vx = Math.cos(newAngle) * spd;
       this.vy = Math.sin(newAngle) * spd;
     }
