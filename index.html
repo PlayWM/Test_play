@@ -634,7 +634,7 @@ const ROCK_PALETTES = [
   { fill: "#a3a3a3", stroke: "#f5f5f5", glow: "#ffffff" }
 ];
 
-// 1. 돌맹이 회전 속도 30% 감속 (1.5초당 1회전 -> 2.14초당 1회전)
+// 3. 확연히 다른 5가지 개성적인 돌맹이 형태 (밝은 회색 색상 유지)
 function drawVectorEliteAsteroid(c, rockId, rotDir, colorIdx, curTime) {
   c.save();
   const rotAngle = (curTime * ((Math.PI * 2) / 2.14)) * (rotDir || 1);
@@ -648,48 +648,66 @@ function drawVectorEliteAsteroid(c, rockId, rotDir, colorIdx, curTime) {
   c.shadowColor = theme.glow;
   c.shadowBlur = 10;
 
-  const numPts = 12;
-  const seed = (rockId || 1) * 17;
+  const shapeMode = (rockId || 0) % 5;
   c.beginPath();
-  for (let i = 0; i < numPts; i++) {
-    const th = (i / numPts) * Math.PI * 2;
-    const jag = Math.sin(th * 3 + seed) * 4.5 + Math.cos(th * 5) * 3.0;
-    const baseR = (i % 2 === 0 ? 27 : 33) + jag;
-    const rx = Math.cos(th) * baseR;
-    const ry = Math.sin(th) * (baseR * 0.9);
-    if (i === 0) c.moveTo(rx, ry);
-    else c.lineTo(rx, ry);
+
+  if (shapeMode === 0) {
+    // 0: 날카로운 별각 톱니 암석 (Star Crag)
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4;
+      const rOuter = i % 2 === 0 ? 36 : 22;
+      const x = Math.cos(a) * rOuter;
+      const y = Math.sin(a) * rOuter;
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    }
+  } else if (shapeMode === 1) {
+    // 1: 길쭉한 침상 암석 (Needle Shard)
+    c.moveTo(0, -38);
+    c.lineTo(16, -10);
+    c.lineTo(24, 20);
+    c.lineTo(0, 36);
+    c.lineTo(-20, 16);
+    c.lineTo(-12, -14);
+  } else if (shapeMode === 2) {
+    // 2: 각진 울퉁불퉁 8각 운석 (Octa Meteor)
+    const pts = [[0, -32], [22, -26], [32, 0], [20, 28], [-4, 34], [-28, 20], [-34, -6], [-18, -26]];
+    c.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+  } else if (shapeMode === 3) {
+    // 3: 굴곡진 초승달형 크레센트 암석 (Crescent Asteroid)
+    c.moveTo(0, -34);
+    c.quadraticCurveTo(34, 0, 0, 34);
+    c.lineTo(-16, 22);
+    c.quadraticCurveTo(12, 0, -16, -22);
+  } else {
+    // 4: 비대칭 덩어리형 볼더 (Asymmetric Boulder)
+    c.moveTo(-10, -34);
+    c.lineTo(26, -22);
+    c.lineTo(34, 12);
+    c.lineTo(10, 32);
+    c.lineTo(-26, 26);
+    c.lineTo(-32, -4);
   }
+
   c.closePath();
   c.fill();
   c.stroke();
 
-  for (let i = 0; i < 3; i++) {
-    const ang = i * ((Math.PI * 2) / 3);
-    const crX = Math.cos(ang) * 28;
-    const crY = Math.sin(ang) * 29;
-    const crR = 5.5 * (0.7 + ((rockId * 3 + i) % 7) * 0.1);
-    c.fillStyle = "#cbd5e1";
-    c.beginPath(); c.arc(crX, crY, crR, 0, Math.PI * 2); c.fill();
-    c.fillStyle = "#64748b";
-    c.beginPath(); c.arc(crX, crY, crR * 0.55, 0, Math.PI * 2); c.fill();
-  }
-
-  const centerCraters = [
-    { x: -7, y: -8, r: 3.5 },
-    { x: 8, y: -5, r: 4.0 },
-    { x: -6, y: 8, r: 3.2 },
-    { x: 7, y: 9, r: 3.8 }
+  // 분화구 3개 배치
+  const crPos = [
+    { x: -8, y: -10, r: 4.8 },
+    { x: 10, y: -4, r: 5.5 },
+    { x: -2, y: 12, r: 4.2 }
   ];
-  centerCraters.forEach(cr => {
-    c.fillStyle = "#64748b";
+  crPos.forEach(cr => {
+    c.fillStyle = "#cbd5e1";
     c.beginPath(); c.arc(cr.x, cr.y, cr.r, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = theme.stroke; c.lineWidth = 1.2; c.stroke();
+    c.fillStyle = "#64748b";
+    c.beginPath(); c.arc(cr.x, cr.y, cr.r * 0.55, 0, Math.PI * 2); c.fill();
   });
 
   c.restore();
 }
-
 function drawVectorEnemy(c, designId, isHeavy, rotDir, colorIdx, curTime) {
   if (isHeavy) drawVectorEliteAsteroid(c, designId, rotDir, colorIdx, curTime);
   else drawVectorRegularEnemy(c, (designId || 0) % 4);
@@ -1558,9 +1576,10 @@ class MeteorManager {
     this.meteors.forEach(m => {
       if (m.y < 20 || m.isBeingSucked) return;
 
+      // 4. 혜성이 지나갈 때 닿은 모든 적 비행기 및 돌맹이 일괄 파괴
       enemiesList.forEach(e => {
-        if (e.isHeavy && !e.isDead && Math.hypot(e.x - m.x, e.y - m.y) < e.radius + m.radius) {
-          safeKillEnemy(e, "#cbd5e1");
+        if (!e.isDead && e.hp > 0 && Math.hypot(e.x - m.x, e.y - m.y) < e.radius + m.radius) {
+          safeKillEnemy(e, e.isHeavy ? "#cbd5e1" : "#ff7700");
           playExplosionSound();
         }
       });
@@ -2180,7 +2199,9 @@ function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
       safeKillEnemy(e, "#cbd5e1"); // e.isHeavy 체크로 정확히 5점 가산
     }
     return;
-  }  if (e.hasShield) {
+  }
+
+  if (e.hasShield) {
     e.shieldHits++;
     e.freezeTimer = 0.2;
     e.vx = 0;
@@ -2203,16 +2224,48 @@ class BossEnemy {
     this.hp = 40;
     this.radius = 58;
     this.isFullyEntered = false;
-    this.vx = 2.0;
+    this.vx = 2.4;
     this.lastFireTime = 0.0;
+    this.spawnTime = performance.now() / 1000;
+    this.lastDescendStepTime = 0;
   }
   update(dt, curTime, missiles) {
     if (!this.isFullyEntered) {
       this.y += 1.8 * (dt * 60);
-      if (this.y >= this.targetY) { this.y = this.targetY; this.isFullyEntered = true; this.lastFireTime = curTime; }
+      if (this.y >= this.targetY) {
+        this.y = this.targetY;
+        this.isFullyEntered = true;
+        this.lastFireTime = curTime;
+        this.lastDescendStepTime = curTime;
+      }
     } else {
+      // 5. 좌우 지속 왕복 (구석 끼임 원천 방지: 클램핑 후 반전)
       this.x += this.vx * (dt * 60);
-      if (this.x <= this.radius + 15 || this.x >= LOGICAL_WIDTH - this.radius - 15) this.vx *= -1;
+      const minX = this.radius + 15;
+      const maxX = LOGICAL_WIDTH - this.radius - 15;
+      if (this.x <= minX) {
+        this.x = minX;
+        this.vx = Math.abs(this.vx);
+      } else if (this.x >= maxX) {
+        this.x = maxX;
+        this.vx = -Math.abs(this.vx);
+      }
+
+      // 5. 노출 후 60초 경과 시, 3초에 한 번씩 보스 높이(116px)만큼 아래로 하강
+      const aliveDuration = curTime - this.spawnTime;
+      if (aliveDuration >= 60.0) {
+        if (curTime - this.lastDescendStepTime >= 3.0) {
+          this.lastDescendStepTime = curTime;
+          this.targetY += this.radius * 2; // 보스 높이(약 116px) 하강
+          playTone(220, 0.25, "sawtooth", -80, 0.15);
+        }
+      }
+
+      if (this.y < this.targetY) {
+        this.y = Math.min(this.targetY, this.y + 1.2 * (dt * 60));
+      }
+
+      // 총알 발사
       if (curTime - this.lastFireTime >= 3.0) {
         this.lastFireTime = curTime;
         missiles.push(new Bullet(this.x - 22, this.y + 45, -0.6, 5.5, 1, 6, "DEFAULT"));
@@ -2221,6 +2274,7 @@ class BossEnemy {
       }
     }
   }
+
   draw(curTime) {
     ctx.save();
     ctx.translate(this.x, this.y);
@@ -2473,6 +2527,8 @@ function finishNukeSequence() {
   enterSlotMenu();
 }
 
+let preUpgradePlayerPos = { x: LOGICAL_WIDTH / 2, y: LOGICAL_HEIGHT * 0.8 };
+
 function enterSlotMenu() {
   playTone(440, 0.12, "triangle", 200, 0.12);
   shuffledMultiplierPool = generateWeightedRoulettePool(24);
@@ -2481,13 +2537,12 @@ function enterSlotMenu() {
   statZoomIndex = -1;
   isTouchActive = false;
 
-  // 2. 적 노출 수준과 내 비행기 상태를 분석하여 추천 스킬 실시간 판정
   recommendedSkillCode = calculateRecommendedSkill();
 
-  // 7. 내 비행기 높이(약 48px) 한 개만큼 올라간 위치로 이동
-  if (player) {
-    player.x = LOGICAL_WIDTH / 2;
-    player.y = LOGICAL_HEIGHT - player.radius - 68;
+  // 2. 진입 전 플레이어 좌표를 백업하고 위치 변경 없이 그대로 유지
+  if (player && player.isAlive) {
+    preUpgradePlayerPos.x = player.x;
+    preUpgradePlayerPos.y = player.y;
     player.targetX = player.x;
     player.targetY = player.y;
   }
@@ -2533,14 +2588,16 @@ function applyChosenSkill(code, customDuration=null) {
 function playChosenImmediateReturn() {
   playTone(440, 0.1, "sine", 0, 0.1);
   isTouchActive = false;
-  if (player) {
+  // 2. 본 게임 복귀 시 진입 전 위치를 완벽하게 복원하여 비행기 실종 원천 차단
+  if (player && player.isAlive) {
+    player.x = preUpgradePlayerPos.x;
+    player.y = preUpgradePlayerPos.y;
     player.targetX = player.x;
     player.targetY = player.y;
   }
   setTimeout(() => { isTouchActive = false; }, 50);
   gameState = 1;
 }
-
 // =================================================================
 // 7. 통합 사용자 입력 리스너 (외부입력 및 정확한 좌표 보정)
 // =================================================================
@@ -2576,9 +2633,9 @@ function handlePointerDown(e) {
   } else if (gameState === 2 && !randomPickShowcaseActive) {
     // 3. 상단 스탯 상태창 터치 시 2배 확대 (0.3초간)
    const statBoxes = [
-      { x: 35, y: 122, w: 115, h: 54 },
-      { x: 167, y: 122, w: 115, h: 54 },
-      { x: 300, y: 122, w: 115, h: 54 }
+      { x: 35, y: 250, w: 115, h: 48 },
+      { x: 167, y: 250, w: 115, h: 48 },
+      { x: 300, y: 250, w: 115, h: 48 }
     ];
   for (let i = 0; i < statBoxes.length; i++) {
       let sb = statBoxes[i];
@@ -2591,7 +2648,7 @@ function handlePointerDown(e) {
     }
 
     // 3. 슬롯머신(룰렛) 클릭 판정 (Y: 235~340)
-    const btnMult = { x: 35, y: 230, w: 380, h: 105 };
+    const btnMult = { x: 35, y: 332, w: 380, h: 95 };
     if (coords.x >= btnMult.x && coords.x <= btnMult.x + btnMult.w && coords.y >= btnMult.y && coords.y <= btnMult.y + btnMult.h) {
       const picked = shuffledMultiplierPool[currentMultIndex];
       if (picked.type === "PWR") player.powerStat += picked.val;
@@ -2612,12 +2669,12 @@ function handlePointerDown(e) {
 
     // 3. 하단 6개 카드 클릭 판정 (Y: 375~545)
    const pickCards = [
-      { code: "POWER_UP", x: 35, y: 370, w: 115, h: 75 },
-      { code: "MISSILE_UP", x: 167, y: 370, w: 115, h: 75 },
-      { code: "FIRE_RATE", x: 300, y: 370, w: 115, h: 75 },
-      { code: "SHIELD", x: 35, y: 465, w: 115, h: 75, active: player && player.shieldRemain > 0 },
-      { code: "LASER_WEAPON", x: 167, y: 465, w: 115, h: 75, active: player && player.laserWeaponTimer > 0 },
-      { code: "CLONE_SHIP", x: 300, y: 465, w: 115, h: 75, active: player && player.clonePlaneTimer > 0 }
+      { code: "POWER_UP", x: 35, y: 442, w: 115, h: 72 },
+      { code: "MISSILE_UP", x: 167, y: 442, w: 115, h: 72 },
+      { code: "FIRE_RATE", x: 300, y: 442, w: 115, h: 72 },
+      { code: "SHIELD", x: 35, y: 524, w: 115, h: 72, active: player && player.shieldRemain > 0 },
+      { code: "LASER_WEAPON", x: 167, y: 524, w: 115, h: 72, active: player && player.laserWeaponTimer > 0 },
+      { code: "CLONE_SHIP", x: 300, y: 524, w: 115, h: 72, active: player && player.clonePlaneTimer > 0 }
     ];
     for (let c of pickCards) {
       if (coords.x >= c.x && coords.x <= c.x + c.w && coords.y >= c.y && coords.y <= c.y + c.h) {
@@ -3306,78 +3363,135 @@ function safeGameLoop(now) {
 } else if (gameState === 2) {
       ctx.textAlign = "center";
       ctx.fillStyle = "#00f5ff";
-      ctx.font = `bold 18px ${FONT_FAMILY}`;
-      ctx.fillText("PILOT SKILL STATUS", LOGICAL_WIDTH / 2, 32);
+      ctx.font = `bold 16px ${FONT_FAMILY}`;
+      ctx.fillText("PILOT SKILL STATUS", LOGICAL_WIDTH / 2, 24);
 
-      // 1. 비행기 부위 강조 및 업그레이드 검토창 신설 (폭 380px, 높이 70px)
-      const inspectBox = { x: 35, y: 44, w: 380, h: 70 };
+      // 1. 비행기 검토창: 높이 3배(210px) 확장, 좌측 비행기 확대 & 우측 업그레이드 모듈 HUD 분석 UI
+      const inspectBox = { x: 35, y: 32, w: 380, h: 210 };
       ctx.save();
-      ctx.fillStyle = "rgba(8, 14, 30, 0.92)";
-      drawRoundRect(ctx, inspectBox.x, inspectBox.y, inspectBox.w, inspectBox.h, 8);
+      ctx.fillStyle = "rgba(6, 12, 28, 0.94)";
+      drawRoundRect(ctx, inspectBox.x, inspectBox.y, inspectBox.w, inspectBox.h, 10);
       ctx.fill();
-      ctx.strokeStyle = "rgba(0, 245, 255, 0.6)";
-      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = "rgba(0, 245, 255, 0.7)";
+      ctx.lineWidth = 1.8;
       ctx.stroke();
 
-      // 업그레이드 검토 스캔 라인 애니메이션
-      const scanY = inspectBox.y + ((curTime * 35) % inspectBox.h);
-      ctx.strokeStyle = "rgba(0, 245, 255, 0.35)";
-      ctx.lineWidth = 1.5;
+      // 전역 스캔 라인 애니메이션
+      const scanY = inspectBox.y + ((curTime * 45) % inspectBox.h);
+      ctx.strokeStyle = "rgba(0, 245, 255, 0.25)";
+      ctx.lineWidth = 2.0;
       ctx.beginPath();
       ctx.moveTo(inspectBox.x + 4, scanY);
       ctx.lineTo(inspectBox.x + inspectBox.w - 4, scanY);
       ctx.stroke();
 
-      // 검토 상태 텍스트
+      // 헤더 상태 텍스트
       ctx.textAlign = "left";
-      ctx.fillStyle = "rgba(0, 245, 255, 0.8)";
+      ctx.fillStyle = "#00f5ff";
       ctx.font = `bold 10px ${FONT_FAMILY}`;
-      ctx.fillText("DIAGNOSTIC: INSPECTING MODULES...", inspectBox.x + 12, inspectBox.y + 16);
+      ctx.fillText("SYSTEM DIAGNOSTIC // ACTIVE MODULE ANALYSIS", inspectBox.x + 14, inspectBox.y + 18);
 
-      // 중앙 비행기 렌더링
-      const shipCenterX = inspectBox.x + inspectBox.w / 2;
-      const shipCenterY = inspectBox.y + 38;
+      // 좌측 비행기 크게 배치 (중심 X: 115, Y: 125, Scale: 1.35)
+      const shipCenterX = inspectBox.x + 85;
+      const shipCenterY = inspectBox.y + 115;
       ctx.save();
       ctx.translate(shipCenterX, shipCenterY);
       let shipCol = "#00f5ff";
       if (player && (player.name === "Legend" || player.pType === 4)) shipCol = "#ffd700";
       else if (player && player.pType === 1) shipCol = "#ff2244";
       else if (player && player.pType === 2) shipCol = "#00ff66";
-      drawVectorPlayer(ctx, player ? player.pType : 0, shipCol, 0.75, 0, false);
+      drawVectorPlayer(ctx, player ? player.pType : 0, shipCol, 1.35, 0, false);
       ctx.restore();
 
-      // 부위 강조: 파워 (중앙 코어 조준원)
-      const pPulse = Math.sin(curTime * 8) * 2 + 6;
+      // 좌측 비행기 부위 강조 조준선 (파워, 미사일, 연사 엔진)
+      const pPulse = Math.sin(curTime * 8) * 3 + 12;
       ctx.strokeStyle = "#ff0080";
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.arc(shipCenterX, shipCenterY - 4, pPulse, 0, Math.PI * 2);
+      ctx.arc(shipCenterX, shipCenterY - 8, pPulse, 0, Math.PI * 2);
       ctx.stroke();
 
-      // 부위 강조: 미사일 (양 날개 포드 강조 박스)
-      const mPulse = Math.sin(curTime * 10) * 1.5 + 4;
+      const mPulse = Math.sin(curTime * 10) * 2 + 7;
       ctx.strokeStyle = "#00f5ff";
-      ctx.lineWidth = 1.2;
-      ctx.strokeRect(shipCenterX - 22 - mPulse / 2, shipCenterY + 4 - mPulse / 2, mPulse, mPulse);
-      ctx.strokeRect(shipCenterX + 22 - mPulse / 2, shipCenterY + 4 - mPulse / 2, mPulse, mPulse);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(shipCenterX - 35 - mPulse / 2, shipCenterY + 5 - mPulse / 2, mPulse, mPulse);
+      ctx.strokeRect(shipCenterX + 35 - mPulse / 2, shipCenterY + 5 - mPulse / 2, mPulse, mPulse);
 
-      // 부위 강조: 발사 속도 (후방 추진기 점멸 화살표)
       ctx.fillStyle = "#ffe600";
       ctx.beginPath();
-      ctx.moveTo(shipCenterX - 4, shipCenterY + 16);
-      ctx.lineTo(shipCenterX + 4, shipCenterY + 16);
-      ctx.lineTo(shipCenterX, shipCenterY + 22);
+      ctx.moveTo(shipCenterX - 6, shipCenterY + 30);
+      ctx.lineTo(shipCenterX + 6, shipCenterY + 30);
+      ctx.lineTo(shipCenterX, shipCenterY + 40);
       ctx.closePath();
       ctx.fill();
 
+      // 우측 업그레이드 대상 3종 모듈 HUD 분석 패널
+      const rightX = inspectBox.x + 185;
+      const modules = [
+        { label: "CORE CANNON", lv: player ? Math.round(player.powerStat) : 1, col: "#ff0080", y: inspectBox.y + 36, max: 20 },
+        { label: "WING MISSILE", lv: player ? Math.round(player.missileStat) : 1, col: "#00f5ff", y: inspectBox.y + 92, max: 20 },
+        { label: "PLASMA DRIVE", lv: player ? Math.round(player.fireRateStat) : 1, col: "#ffe600", y: inspectBox.y + 148, max: 20 }
+      ];
+
+      modules.forEach(m => {
+        // 모듈 미니 박스
+        ctx.fillStyle = "rgba(12, 20, 42, 0.85)";
+        drawRoundRect(ctx, rightX, m.y, 180, 48, 6);
+        ctx.fill();
+        ctx.strokeStyle = m.col;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // 모듈 미니 아이콘 그래픽
+        ctx.save();
+        ctx.translate(rightX + 18, m.y + 24);
+        ctx.fillStyle = m.col;
+        if (m.label === "CORE CANNON") {
+          ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5; ctx.stroke();
+        } else if (m.label === "WING MISSILE") {
+          ctx.fillRect(-3, -7, 6, 14);
+          ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.moveTo(-4, -7); ctx.lineTo(0, -11); ctx.lineTo(4, -7); ctx.fill();
+        } else {
+          ctx.beginPath(); ctx.moveTo(-6, -6); ctx.lineTo(6, 0); ctx.lineTo(-6, 6); ctx.fill();
+        }
+        ctx.restore();
+
+        // 모듈 이름 및 레벨 수치
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#e2e8f0";
+        ctx.font = `bold 10px ${FONT_FAMILY}`;
+        ctx.fillText(m.label, rightX + 38, m.y + 18);
+
+        ctx.textAlign = "right";
+        ctx.fillStyle = m.col;
+        ctx.font = `bold 12px ${FONT_FAMILY}`;
+        ctx.fillText(`Lv.${m.lv}`, rightX + 170, m.y + 18);
+
+        // 분석 진행 게이지 바
+        const barW = 132;
+        const barPct = Math.min(1.0, m.lv / m.max);
+        ctx.fillStyle = "#1e293b";
+        drawRoundRect(ctx, rightX + 38, m.y + 26, barW, 6, 3);
+        ctx.fill();
+        ctx.fillStyle = m.col;
+        drawRoundRect(ctx, rightX + 38, m.y + 26, barW * barPct, 6, 3);
+        ctx.fill();
+
+        ctx.textAlign = "left";
+        ctx.fillStyle = "rgba(148, 163, 184, 0.75)";
+        ctx.font = `9px ${FONT_FAMILY}`;
+        ctx.fillText("READY FOR UPGRADE", rightX + 38, m.y + 42);
+      });
+
       ctx.restore();
 
+      // 확장된 검토창 높이에 맞춰 하단 스탯 박스 Y좌표 조정 (Y: 250)
       const statBoxes = [
-        { title: "POWER", lv: player ? Math.round(player.powerStat) : 1, col: "#ff0080", x: 35, y: 122, w: 115, h: 54 },
-        { title: "MISSILE", lv: player ? Math.round(player.missileStat) : 1, col: "#00f5ff", x: 167, y: 122, w: 115, h: 54 },
-        { title: "RATE", lv: player ? Math.round(player.fireRateStat) : 1, col: "#ffe600", x: 300, y: 122, w: 115, h: 54 }
-      ];
-      const isZooming = (statZoomIndex >= 0 && (curTime - statZoomStartTime < 0.3));
+        { title: "POWER", lv: player ? Math.round(player.powerStat) : 1, col: "#ff0080", x: 35, y: 250, w: 115, h: 48 },
+        { title: "MISSILE", lv: player ? Math.round(player.missileStat) : 1, col: "#00f5ff", x: 167, y: 250, w: 115, h: 48 },
+        { title: "RATE", lv: player ? Math.round(player.fireRateStat) : 1, col: "#ffe600", x: 300, y: 250, w: 115, h: 48 }
+      ];      const isZooming = (statZoomIndex >= 0 && (curTime - statZoomStartTime < 0.3));
 
       statBoxes.forEach((sb, idx) => {
         ctx.save();
@@ -3390,28 +3504,29 @@ function safeGameLoop(now) {
 
         ctx.textAlign = "center";
         ctx.fillStyle = "#a5c0e0";
-        ctx.font = `bold 11px ${FONT_FAMILY}`;
-        ctx.fillText(sb.title, sb.x + sb.w / 2, sb.y + 20);
+        ctx.font = `bold 10px ${FONT_FAMILY}`;
+        ctx.fillText(sb.title, sb.x + sb.w / 2, sb.y + 16);
 
         const zoomThis = isZooming && (statZoomIndex === idx);
         ctx.fillStyle = sb.col;
         if (zoomThis) {
-          ctx.font = `bold 36px ${FONT_FAMILY}`;
-          ctx.fillText(`Lv.${sb.lv}`, sb.x + sb.w / 2, sb.y + 50);
+          ctx.font = `bold 32px ${FONT_FAMILY}`;
+          ctx.fillText(`Lv.${sb.lv}`, sb.x + sb.w / 2, sb.y + 42);
         } else {
-          ctx.font = `bold 20px ${FONT_FAMILY}`;
-          ctx.fillText(`Lv.${sb.lv}`, sb.x + sb.w / 2, sb.y + 46);
+          ctx.font = `bold 18px ${FONT_FAMILY}`;
+          ctx.fillText(`Lv.${sb.lv}`, sb.x + sb.w / 2, sb.y + 38);
         }
         ctx.restore();
       });
 
-      // 8. 슬롯머신 윗쪽 문구: 최상단 타이틀과 크기 및 색상 일치 (bold 20px, #00f5ff)
+      // 슬롯머신 윗쪽 문구 (Y: 318)
       ctx.textAlign = "center";
       ctx.fillStyle = "#00f5ff";
-      ctx.font = `bold 20px ${FONT_FAMILY}`;
-      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 205);
+      ctx.font = `bold 16px ${FONT_FAMILY}`;
+      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 318);
 
-      const btnMult = { x: 35, y: 230, w: PERIMETER_W, h: PERIMETER_H };
+      // 슬롯머신 창 (Y: 332, H: 95)
+      const btnMult = { x: 35, y: 332, w: PERIMETER_W, h: 95 };
       if (curTime - lastMultRollTime >= 0.048) {
         lastMultRollTime = curTime;
         currentMultIndex = (currentMultIndex + 1) % shuffledMultiplierPool.length;
@@ -3454,15 +3569,15 @@ function safeGameLoop(now) {
 
       // 1. 개별 반짝임 삭제 및 2. 추천 스킬 0.1초 반짝임 + [RECOMMENDED] 문구
       const row1Cards = [
-        { code: "POWER_UP", title: "POWER +1", desc: "INSTANT", col: "#ff0080", x: 35, y: 370, w: 115, h: 75 },
-        { code: "MISSILE_UP", title: "MISSILE +1", desc: "INSTANT", col: "#00f5ff", x: 167, y: 370, w: 115, h: 75 },
-        { code: "FIRE_RATE", title: "RATE +1", desc: "INSTANT", col: "#ffe600", x: 300, y: 370, w: 115, h: 75 }
+        { code: "POWER_UP", title: "POWER +1", desc: "INSTANT", col: "#ff0080", x: 35, y: 442, w: 115, h: 72 },
+        { code: "MISSILE_UP", title: "MISSILE +1", desc: "INSTANT", col: "#00f5ff", x: 167, y: 442, w: 115, h: 72 },
+        { code: "FIRE_RATE", title: "RATE +1", desc: "INSTANT", col: "#ffe600", x: 300, y: 442, w: 115, h: 72 }
       ];
 
       const row2Cards = [
-        { code: "SHIELD", title: "SHIELD", desc: "1~30s", col: "#32ff78", x: 35, y: 465, w: 115, h: 75, active: player && player.shieldRemain > 0 },
-        { code: "LASER_WEAPON", title: "LASER", desc: "1~30s", col: "#00f5ff", x: 167, y: 465, w: 115, h: 75, active: player && player.laserWeaponTimer > 0 },
-        { code: "CLONE_SHIP", title: "TWIN", desc: "1~30s", col: "#78a0ff", x: 300, y: 465, w: 115, h: 75, active: player && player.clonePlaneTimer > 0 }
+        { code: "SHIELD", title: "SHIELD", desc: "1~30s", col: "#32ff78", x: 35, y: 524, w: 115, h: 72, active: player && player.shieldRemain > 0 },
+        { code: "LASER_WEAPON", title: "LASER", desc: "1~30s", col: "#00f5ff", x: 167, y: 524, w: 115, h: 72, active: player && player.laserWeaponTimer > 0 },
+        { code: "CLONE_SHIP", title: "TWIN", desc: "1~30s", col: "#78a0ff", x: 300, y: 524, w: 115, h: 72, active: player && player.clonePlaneTimer > 0 }
       ];
 
       const isRecFlash = Math.floor(curTime / 0.10) % 2 === 0;
