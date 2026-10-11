@@ -3453,14 +3453,23 @@ function safeGameLoop(now) {
       const pPulse = Math.sin(curTime * 8) * 3 + 12;
       ctx.strokeStyle = "#ff007f";
       ctx.lineWidth = 1.68;
-      ctx.beginPath();
-      ctx.arc(shipCenterX, shipCenterY - 8, pPulse, 0, Math.PI * 2);
-      ctx.stroke();
+      const curPType = player ? player.pType : 0;
+      if (curPType === 2) {
+        const twinCannonOffsets = [-14, 14];
+        for (let i = 0; i < twinCannonOffsets.length; i++) {
+          ctx.beginPath();
+          ctx.arc(shipCenterX + twinCannonOffsets[i], shipCenterY - 14, pPulse * 0.75, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else {
+        ctx.beginPath();
+        ctx.arc(shipCenterX, shipCenterY - 8, pPulse, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       const mPulse = Math.sin(curTime * 10) * 2 + 8;
       ctx.strokeStyle = "#00f5ff";
       ctx.lineWidth = 1.4;
-      const curPType = player ? player.pType : 0;
       const wingOffsets = (curPType === 2) ? [-24, 24] : [-35, 35];
       for (let i = 0; i < wingOffsets.length; i++) {
         const cx = shipCenterX + wingOffsets[i];
