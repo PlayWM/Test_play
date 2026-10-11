@@ -638,8 +638,8 @@ function drawVectorPlayer(c, type, color, scale = 1.0, flameHeight = 0, isMissil
 
     c.strokeStyle = "#fff275"; c.lineWidth = 1.0;
     c.beginPath();
-    c.moveTo(11, -13); ctx.lineTo(27, 5);
-    c.moveTo(-11, -13); ctx.lineTo(-27, 5);
+    c.moveTo(11, -13); c.lineTo(27, 5);
+    c.moveTo(-11, -13); c.lineTo(-27, 5);
     c.stroke();
 
     const coreG = c.createRadialGradient(0, 1, 1, 0, 1, 9);
