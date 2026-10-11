@@ -32,7 +32,7 @@ const nameInput = document.getElementById("name-input");
 
 const LOGICAL_WIDTH = 450;
 const LOGICAL_HEIGHT = 800;
-const VERSION_STR = "v20261011.PerfOptFinal";
+const VERSION_STR = "v20261011.012";
 const FIREBASE_URL = "https://flywm-d0b39-default-rtdb.asia-southeast1.firebasedatabase.app/leaderboard.json";
 const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Malgun Gothic', sans-serif";
 
@@ -403,21 +403,37 @@ function drawGalaxyBackground(c, curTime) {
   c.restore();
 }
 
-function drawWingMissilePod(c, mx, my, isFlash=false) {
+function drawWingMissilePod(c, mx, my, isFlash=false, isType0=false) {
   c.save();
   c.translate(mx, my);
   c.fillStyle = "#1e293b";
-  c.fillRect(-2, -5, 4, 10);
-  c.fillStyle = "#ff007f";
-  c.beginPath();
-  c.moveTo(0, -9); c.lineTo(2, -5); c.lineTo(-2, -5);
-  c.closePath(); c.fill();
-  c.fillStyle = "#00f5ff";
-  c.fillRect(-1.5, 0, 3, 1.5);
-  c.fillStyle = "#ffd700";
-  c.beginPath();
-  c.moveTo(-2, 5); c.lineTo(0, 8); c.lineTo(2, 5);
-  c.closePath(); c.fill();
+  c.fillRect(-4, -6, 8, 14);
+  c.strokeStyle = "#475569";
+  c.lineWidth = 1;
+  c.strokeRect(-4, -6, 8, 14);
+
+  if (isType0) {
+    c.fillStyle = "#0f172a";
+    c.fillRect(-3, -8, 6, 3);
+    for (let i = -1.5; i <= 1.5; i += 3) {
+      for (let j = -4; j <= 2; j += 4) {
+        c.fillStyle = "#ff007f";
+        c.beginPath(); c.arc(i, j, 1.2, 0, Math.PI * 2); c.fill();
+      }
+    }
+    c.strokeStyle = "#00f5ff";
+    c.lineWidth = 0.8;
+    c.strokeRect(-3, -5, 6, 11);
+  } else {
+    c.fillStyle = "#ff0055";
+    c.beginPath();
+    c.moveTo(0, -11); c.lineTo(3, -5); c.lineTo(-3, -5);
+    c.closePath(); c.fill();
+    c.fillStyle = "#ffd700";
+    c.fillRect(-2, -2, 4, 2);
+    c.fillStyle = "#00f5ff";
+    c.fillRect(-1.5, 2, 3, 4);
+  }
 
   if (isFlash) {
     const fGrad = c.createRadialGradient(0, -11, 1, 0, -11, 8);
@@ -429,7 +445,6 @@ function drawWingMissilePod(c, mx, my, isFlash=false) {
   }
   c.restore();
 }
-
 function drawVectorPlayer(c, type, color, scale = 1.0, flameHeight = 0, isMissileFlash=false) {
   c.save();
   c.scale(scale, scale);
@@ -439,232 +454,331 @@ function drawVectorPlayer(c, type, color, scale = 1.0, flameHeight = 0, isMissil
   const safeFlame = Number.isFinite(flameHeight) ? flameHeight : 0;
   const flH = Math.max(4, 14 + Math.random() * 8 + safeFlame);
 
-  const drawThruster = (tx, ty, tw) => {
-    c.fillStyle = "#1e293b";
-    c.fillRect(tx - tw / 2, ty, tw, 4);
-    c.strokeStyle = "#475569";
-    c.lineWidth = 1;
-    c.strokeRect(tx - tw / 2, ty, tw, 4);
+  const drawThruster = (tx, ty, tw, isHeavy=false) => {
+    c.fillStyle = "#0f172a";
+    c.fillRect(tx - tw/2 - 1, ty - 2, tw + 2, 6);
+    c.strokeStyle = "#38bdf8";
+    c.lineWidth = 0.8;
+    c.strokeRect(tx - tw/2 - 1, ty - 2, tw + 2, 6);
 
     const startY = ty + 4;
     const endY = startY + flH;
-    const fg = c.createLinearGradient(tx, startY, tx, endY);
-    fg.addColorStop(0, "#ffffff");
-    fg.addColorStop(0.25, color || "#00f5ff");
-    fg.addColorStop(1, "rgba(0,0,0,0)");
-    c.fillStyle = fg;
+    const fgOut = c.createLinearGradient(tx, startY, tx, endY + 4);
+    fgOut.addColorStop(0, "rgba(255, 255, 255, 0.9)");
+    fgOut.addColorStop(0.2, color);
+    fgOut.addColorStop(0.7, "rgba(0, 150, 255, 0.3)");
+    fgOut.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = fgOut;
     c.beginPath();
-    c.moveTo(tx - tw / 2 + 1, startY);
-    c.lineTo(tx, endY);
-    c.lineTo(tx + tw / 2 - 1, startY);
+    c.moveTo(tx - tw/2, startY);
+    c.lineTo(tx, endY + 4);
+    c.lineTo(tx + tw/2, startY);
     c.closePath();
     c.fill();
 
-    // 부스터 가속 시 중심부에 역동적인 고열 레드/오렌지 코어 추가
-    if (safeFlame > 0) {
-      const coreH = flH * 0.65;
-      const coreGrad = c.createLinearGradient(tx, startY, tx, startY + coreH);
-      coreGrad.addColorStop(0, "#ffffff");
-      coreGrad.addColorStop(0.25, "#ff0044");
-      coreGrad.addColorStop(0.65, "#ff5500");
-      coreGrad.addColorStop(1, "rgba(255, 0, 68, 0)");
-      c.fillStyle = coreGrad;
-      c.beginPath();
-      c.moveTo(tx - (tw * 0.3), startY);
-      c.lineTo(tx, startY + coreH);
-      c.lineTo(tx + (tw * 0.3), startY);
-      c.closePath();
-      c.fill();
-    }
+    const fgCore = c.createLinearGradient(tx, startY, tx, startY + flH * 0.6);
+    fgCore.addColorStop(0, "#ffffff");
+    fgCore.addColorStop(0.4, (isHeavy || safeFlame > 0) ? "#ff0044" : "#00ffff");
+    fgCore.addColorStop(1, "rgba(255, 255, 255, 0)");
+    c.fillStyle = fgCore;
+    c.beginPath();
+    c.moveTo(tx - tw * 0.25, startY);
+    c.lineTo(tx, startY + flH * 0.6);
+    c.lineTo(tx + tw * 0.25, startY);
+    c.closePath();
+    c.fill();
   };
 
-  if (type === 2) { drawThruster(-11, 14, 6); drawThruster(11, 14, 6); }
-  else { drawThruster(-6, 13, 5); drawThruster(6, 13, 5); }
-
-  const darkHull = "#080d1a";
-  const midHull = "#131e33";
-  const lightHull = "#1c2c4a";
+  if (type === 2) { drawThruster(-12, 15, 6); drawThruster(12, 15, 6); }
+  else if (type === 1) { drawThruster(-8, 16, 7, true); drawThruster(8, 16, 7, true); }
+  else { drawThruster(-6, 14, 5); drawThruster(6, 14, 5); }
 
   if (type === 0) {
-    c.fillStyle = darkHull; c.strokeStyle = color; c.lineWidth = 1.5;
+    c.fillStyle = "#090d19"; c.strokeStyle = "#00f5ff"; c.lineWidth = 1.8;
     c.beginPath();
-    c.moveTo(0, -25); c.lineTo(7, -10); c.lineTo(24, 10); c.lineTo(21, 16);
-    c.lineTo(12, 13); c.lineTo(0, 18); c.lineTo(-12, 13); c.lineTo(-21, 16);
-    c.lineTo(-24, 10); c.lineTo(-7, -10);
+    c.moveTo(0, -27); c.lineTo(8, -12); c.lineTo(26, 10); c.lineTo(22, 17);
+    c.lineTo(13, 13); c.lineTo(0, 19); c.lineTo(-13, 13); c.lineTo(-22, 17);
+    c.lineTo(-26, 10); c.lineTo(-8, -12);
     c.closePath(); c.fill(); c.stroke();
 
-    c.fillStyle = midHull;
+    c.fillStyle = "#121d33";
     c.beginPath();
-    c.moveTo(0, -21); c.lineTo(5, -8); c.lineTo(16, 8); c.lineTo(8, 10);
-    c.lineTo(0, 14); c.lineTo(-8, 10); c.lineTo(-16, 8); c.lineTo(-5, -8);
+    c.moveTo(0, -22); c.lineTo(6, -9); c.lineTo(18, 8); c.lineTo(9, 10);
+    c.lineTo(0, 15); c.lineTo(-9, 10); c.lineTo(-18, 8); c.lineTo(-6, -9);
     c.closePath(); c.fill();
 
-    c.strokeStyle = "rgba(255, 255, 255, 0.45)"; c.lineWidth = 0.8;
+    c.strokeStyle = "#00f5ff"; c.lineWidth = 0.9;
     c.beginPath();
-    c.moveTo(7, -8); c.lineTo(19, 12); c.moveTo(-7, -8); c.lineTo(-19, 12);
+    c.moveTo(0, -26); c.lineTo(0, -5);
+    c.moveTo(-7, -4); c.lineTo(7, -4);
+    c.moveTo(-12, 4); c.lineTo(12, 4);
     c.stroke();
 
-    c.fillStyle = lightHull; c.fillRect(-4, 0, 2, 7); c.fillRect(2, 0, 2, 7);
     c.fillStyle = "#00f5ff";
     c.beginPath();
-    c.moveTo(0, -18); c.lineTo(3.5, -6); c.lineTo(0, 2); c.lineTo(-3.5, -6);
+    c.moveTo(0, -19); c.lineTo(4, -8); c.lineTo(0, 0); c.lineTo(-4, -8);
     c.closePath(); c.fill();
-    c.strokeStyle = "#ffffff"; c.lineWidth = 1; c.stroke();
+    c.fillStyle = "#ffffff";
+    c.fillRect(-1, -15, 2, 6);
 
-    drawWingMissilePod(c, -24, 10, isMissileFlash);
-    drawWingMissilePod(c, 24, 10, isMissileFlash);
+    drawWingMissilePod(c, -26, 9, isMissileFlash, true);
+    drawWingMissilePod(c, 26, 9, isMissileFlash, true);
 
   } else if (type === 1) {
-    c.fillStyle = darkHull; c.strokeStyle = color; c.lineWidth = 1.8;
+    c.fillStyle = "#140a0c"; c.strokeStyle = "#ff2244"; c.lineWidth = 2.0;
     c.beginPath();
-    c.moveTo(0, -23); c.lineTo(14, -12); c.lineTo(24, -2); c.lineTo(22, 16);
-    c.lineTo(11, 14); c.lineTo(0, 19); c.lineTo(-11, 14); c.lineTo(-22, 16);
-    c.lineTo(-24, -2); c.lineTo(-14, -12);
+    c.moveTo(0, -25); c.lineTo(15, -13); c.lineTo(26, -2); c.lineTo(24, 18);
+    c.lineTo(12, 15); c.lineTo(0, 20); c.lineTo(-12, 15); c.lineTo(-24, 18);
+    c.lineTo(-26, -2); c.lineTo(-15, -13);
     c.closePath(); c.fill(); c.stroke();
 
     c.fillStyle = "#334155";
-    c.fillRect(-16, -18, 3.5, 14); c.fillRect(12.5, -18, 3.5, 14);
-    c.fillStyle = midHull;
-    c.beginPath();
-    c.moveTo(0, -18); c.lineTo(8, -6); c.lineTo(8, 8); c.lineTo(0, 13);
-    c.lineTo(-8, 8); c.lineTo(-8, -6);
-    c.closePath(); c.fill();
-    c.fillStyle = "#ff2244";
-    c.beginPath(); c.arc(0, -10, 4, 0, Math.PI * 2); c.fill();
+    c.fillRect(-17, -22, 4.5, 18); c.fillRect(12.5, -22, 4.5, 18);
+    c.strokeStyle = "#ff4466"; c.lineWidth = 1;
+    c.strokeRect(-17, -22, 4.5, 18); c.strokeRect(12.5, -22, 4.5, 18);
 
-    drawWingMissilePod(c, -23, 14, isMissileFlash);
-    drawWingMissilePod(c, 23, 14, isMissileFlash);
+    c.fillStyle = "#ff0055";
+    c.fillRect(-16, -20, 2.5, 4); c.fillRect(13.5, -20, 2.5, 4);
+
+    c.fillStyle = "#1e0b14";
+    c.beginPath();
+    c.moveTo(0, -18); c.lineTo(9, -7); c.lineTo(9, 9); c.lineTo(0, 14);
+    c.lineTo(-9, 9); c.lineTo(-9, -7);
+    c.closePath(); c.fill();
+
+    const reactorGrad = c.createRadialGradient(0, -2, 1, 0, -2, 7);
+    reactorGrad.addColorStop(0, "#ffffff");
+    reactorGrad.addColorStop(0.4, "#ff0055");
+    reactorGrad.addColorStop(0.8, "#550011");
+    reactorGrad.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = reactorGrad;
+    c.beginPath(); c.arc(0, -2, 7, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "#ffaa00"; c.lineWidth = 1; c.stroke();
+
+    drawWingMissilePod(c, -25, 14, isMissileFlash, false);
+    drawWingMissilePod(c, 25, 14, isMissileFlash, false);
 
   } else if (type === 2) {
     const drawFuselage = (fx) => {
-      c.fillStyle = darkHull; c.strokeStyle = color; c.lineWidth = 1.5;
+      c.fillStyle = "#071112"; c.strokeStyle = "#00ff77"; c.lineWidth = 1.6;
       c.beginPath();
-      c.moveTo(fx, -26); c.lineTo(fx + 5, -10); c.lineTo(fx + 6, 12);
-      c.lineTo(fx - 1, 15); c.lineTo(fx - 6, 12); c.lineTo(fx - 5, -10);
+      c.moveTo(fx, -28); c.lineTo(fx + 6, -11); c.lineTo(fx + 7, 13);
+      c.lineTo(fx, 17); c.lineTo(fx - 7, 13); c.lineTo(fx - 6, -11);
       c.closePath(); c.fill(); c.stroke();
-      c.fillStyle = midHull; c.fillRect(fx - 3, -12, 6, 18);
-    };
-    drawFuselage(-11); drawFuselage(11);
-    c.fillStyle = "#1e293b"; c.fillRect(-6, -4, 12, 14);
-    c.fillStyle = "#00ff66"; c.fillRect(-2, 0, 4, 6);
 
-    drawWingMissilePod(c, -17, 10, isMissileFlash);
-    drawWingMissilePod(c, 17, 10, isMissileFlash);
+      c.fillStyle = "#112622";
+      c.fillRect(fx - 3.5, -14, 7, 20);
+
+      c.fillStyle = "#ffffff";
+      c.fillRect(fx - 1.5, -27, 3, 6);
+      c.fillStyle = "#00ffaa";
+      c.fillRect(fx - 2, -18, 4, 3);
+    };
+
+    drawFuselage(-12);
+    drawFuselage(12);
+
+    c.fillStyle = "#131e2b";
+    c.fillRect(-7, -4, 14, 15);
+    c.strokeStyle = "#00f5ff";
+    c.lineWidth = 1;
+    c.strokeRect(-7, -4, 14, 15);
+
+    c.strokeStyle = "rgba(0, 255, 136, 0.6)";
+    c.lineWidth = 1.2;
+    c.beginPath();
+    c.moveTo(-19, 6); c.lineTo(-24, 15);
+    c.moveTo(19, 6); c.lineTo(24, 15);
+    c.stroke();
+
+    drawWingMissilePod(c, -19, 9, isMissileFlash, false);
+    drawWingMissilePod(c, 19, 9, isMissileFlash, false);
 
   } else if (type === 4) {
-    c.fillStyle = "#181305"; c.strokeStyle = color; c.lineWidth = 1.8;
+    c.fillStyle = "#1c1404"; c.strokeStyle = "#ffd700"; c.lineWidth = 2.2;
     c.beginPath();
-    c.moveTo(0, -28); c.lineTo(10, -14); c.lineTo(26, 6); c.lineTo(18, 18);
-    c.lineTo(8, 12); c.lineTo(0, 20); c.lineTo(-8, 12); c.lineTo(-18, 18);
-    c.lineTo(-26, 6); c.lineTo(-10, -14);
+    c.moveTo(0, -30); c.lineTo(11, -15); c.lineTo(29, 6); c.lineTo(20, 20);
+    c.lineTo(9, 13); c.lineTo(0, 22); c.lineTo(-9, 13); c.lineTo(-20, 20);
+    c.lineTo(-29, 6); c.lineTo(-11, -15);
     c.closePath(); c.fill(); c.stroke();
 
-    c.fillStyle = "#2d240c";
+    c.fillStyle = "#3a2a07";
     c.beginPath();
-    c.moveTo(0, -20); c.lineTo(8, -8); c.lineTo(17, 8); c.lineTo(6, 9);
-    c.lineTo(0, 14); c.lineTo(-6, 9); c.lineTo(-17, 8); c.lineTo(-8, -8);
+    c.moveTo(0, -22); c.lineTo(9, -9); c.lineTo(19, 9); c.lineTo(7, 10);
+    c.lineTo(0, 16); c.lineTo(-7, 10); c.lineTo(-19, 9); c.lineTo(-9, -9);
     c.closePath(); c.fill();
+
+    c.strokeStyle = "#fff275"; c.lineWidth = 1.0;
+    c.beginPath();
+    c.moveTo(11, -13); ctx.lineTo(27, 5);
+    c.moveTo(-11, -13); ctx.lineTo(-27, 5);
+    c.stroke();
+
+    const coreG = c.createRadialGradient(0, 1, 1, 0, 1, 9);
+    coreG.addColorStop(0, "#ffffff");
+    coreG.addColorStop(0.3, "#ffe600");
+    coreG.addColorStop(0.8, "#b38600");
+    coreG.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = coreG;
+    c.beginPath();
+    c.moveTo(0, -13); c.lineTo(7, 0); c.lineTo(0, 11); c.lineTo(-7, 0);
+    c.closePath(); c.fill();
+    c.strokeStyle = "#ffffff"; c.lineWidth = 1.2; c.stroke();
+
     c.fillStyle = "#ffd700";
-    c.beginPath(); c.moveTo(0, -11); c.lineTo(6, 0); c.lineTo(0, 10); c.lineTo(-6, 0);
-    c.closePath(); c.fill();
+    c.fillRect(-2, -28, 4, 3);
+    c.fillRect(-7, -19, 2.5, 3);
+    c.fillRect(4.5, -19, 2.5, 3);
 
-    drawWingMissilePod(c, -26, 6, isMissileFlash);
-    drawWingMissilePod(c, 26, 6, isMissileFlash);
+    drawWingMissilePod(c, -28, 7, isMissileFlash, false);
+    drawWingMissilePod(c, 28, 7, isMissileFlash, false);
 
-} else {
-    c.fillStyle = darkHull; c.strokeStyle = color; c.lineWidth = 1.6;
+  } else {
+    c.fillStyle = "#0c1220"; c.strokeStyle = "#00f5ff"; c.lineWidth = 1.8;
     c.beginPath();
-    c.moveTo(0, -24); c.lineTo(18, 12); c.lineTo(0, 6); c.lineTo(-18, 12);
+    c.moveTo(0, -26); c.lineTo(20, 12); c.lineTo(0, 6); c.lineTo(-20, 12);
+    c.closePath(); c.fill(); c.stroke();
+
+    c.fillStyle = "#15243d";
+    c.beginPath();
+    c.moveTo(0, -20); c.lineTo(10, 8); c.lineTo(0, 4); c.lineTo(-10, 8);
     c.closePath(); c.fill();
-    drawWingMissilePod(c, -18, 12, isMissileFlash);
-    drawWingMissilePod(c, 18, 12, isMissileFlash);
+
+    const canG = c.createLinearGradient(0, -15, 0, 2);
+    canG.addColorStop(0, "#ffffff");
+    canG.addColorStop(0.5, "#00f5ff");
+    canG.addColorStop(1, "#003b5c");
+    c.fillStyle = canG;
+    c.beginPath();
+    c.moveTo(0, -17); c.lineTo(4, -6); c.lineTo(0, 1); c.lineTo(-4, -6);
+    c.closePath(); c.fill();
+
+    c.fillStyle = "#000000";
+    c.fillRect(-7, 1, 3, 5); c.fillRect(4, 1, 3, 5);
+
+    drawWingMissilePod(c, -19, 12, isMissileFlash, false);
+    drawWingMissilePod(c, 19, 12, isMissileFlash, false);
   }
 
-  // 아군 기체 패널 라인 및 윙팁 스트로브 디테일
-  c.strokeStyle = "rgba(255, 255, 255, 0.45)";
-  c.lineWidth = 0.8;
-  c.beginPath();
-  c.moveTo(-3, -12); c.lineTo(-1, -4);
-  c.moveTo(3, -12); c.lineTo(1, -4);
-  c.stroke();
-  c.fillStyle = (Math.sin(performance.now() * 0.015) > 0) ? "#ffffff" : color;
-  c.fillRect(-22, 8, 2, 2);
-  c.fillRect(20, 8, 2, 2);
+  c.fillStyle = "#ffffff";
+  c.fillRect(-23, 7, 2, 2);
+  c.fillRect(21, 7, 2, 2);
 
   c.restore();
 }
-
 function drawVectorRegularEnemy(c, subType) {
   c.save();
   c.lineJoin = "round";
   c.lineCap = "round";
 
   if (subType === 0) {
-    c.fillStyle = "#0a0d18"; c.strokeStyle = "#00f5ff"; c.lineWidth = 1.6;
+    c.fillStyle = "#060914"; c.strokeStyle = "#00f5ff"; c.lineWidth = 1.8;
     c.beginPath();
-    c.moveTo(0, 24); c.lineTo(20, -10); c.lineTo(12, -7); c.lineTo(0, -16); c.lineTo(-12, -7); c.lineTo(-20, -10);
+    c.moveTo(0, 26); c.lineTo(22, -10); c.lineTo(13, -7); c.lineTo(0, -18); c.lineTo(-13, -7); c.lineTo(-22, -10);
     c.closePath(); c.fill(); c.stroke();
-    c.fillStyle = "#19223c";
+
+    c.fillStyle = "#0f1c30";
     c.beginPath();
-    c.moveTo(0, 17); c.lineTo(14, -5); c.lineTo(6, -2); c.lineTo(0, -9); c.lineTo(-6, -2); c.lineTo(-14, -5);
+    c.moveTo(0, 19); c.lineTo(15, -5); c.lineTo(6, -3); c.lineTo(0, -10); c.lineTo(-6, -3); c.lineTo(-15, -5);
     c.closePath(); c.fill();
-    c.fillStyle = "#00f5ff"; c.fillRect(-10, 4, 2.5, 8); c.fillRect(7.5, 4, 2.5, 8);
-    c.strokeStyle = "rgba(0, 245, 255, 0.65)"; c.lineWidth = 0.9;
-    c.beginPath(); c.moveTo(0, 18); c.lineTo(12, -3); c.moveTo(0, 18); c.lineTo(-12, -3);
+
+    c.fillStyle = "#00f5ff";
+    c.fillRect(-11, 4, 3, 9); c.fillRect(8, 4, 3, 9);
+    c.fillStyle = "#ffffff";
+    c.fillRect(-10, 6, 1, 5); c.fillRect(9, 6, 1, 5);
+
+    c.fillStyle = "#ff0055";
+    c.beginPath(); c.arc(0, 16, 2.5, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "#ffffff"; c.lineWidth = 0.8; c.stroke();
+
+    c.strokeStyle = "rgba(0, 245, 255, 0.6)"; c.lineWidth = 1.0;
+    c.beginPath();
+    c.moveTo(-18, -8); c.lineTo(-14, -14);
+    c.moveTo(18, -8); c.lineTo(14, -14);
     c.stroke();
-    c.fillStyle = "#ffffff"; c.fillRect(-3, 0, 2, 4); c.fillRect(1, 0, 2, 4);
 
   } else if (subType === 1) {
-    c.fillStyle = "#1a0808"; c.strokeStyle = "#ff4400"; c.lineWidth = 1.7;
+    c.fillStyle = "#150606"; c.strokeStyle = "#ff3b00"; c.lineWidth = 2.0;
     c.beginPath();
-    c.moveTo(0, 22); c.lineTo(12, 10); c.lineTo(22, 4); c.lineTo(16, -14); c.lineTo(0, -7); c.lineTo(-16, -14); c.lineTo(-22, 4); c.lineTo(-12, 10);
+    c.moveTo(0, 25); c.lineTo(14, 11); c.lineTo(24, 4); c.lineTo(18, -15); c.lineTo(0, -8); c.lineTo(-18, -15); c.lineTo(-24, 4); c.lineTo(-14, 11);
     c.closePath(); c.fill(); c.stroke();
-    c.fillStyle = "#33130c";
+
+    c.fillStyle = "#2c0e0b";
     c.beginPath();
-    c.moveTo(0, 15); c.lineTo(9, 6); c.lineTo(14, -6); c.lineTo(0, -3); c.lineTo(-14, -6); c.lineTo(-9, 6);
+    c.moveTo(0, 17); c.lineTo(10, 7); c.lineTo(15, -5); c.lineTo(0, -2); c.lineTo(-15, -5); c.lineTo(-10, 7);
     c.closePath(); c.fill();
-    c.fillStyle = "#64748b"; c.fillRect(-15, -4, 3, 12); c.fillRect(12, -4, 3, 12);
-    c.strokeStyle = "#ff7700"; c.strokeRect(-15, -4, 3, 12); c.strokeRect(12, -4, 3, 12);
-    c.fillStyle = "#ffff00"; c.beginPath(); c.arc(0, -2, 2.8, 0, Math.PI * 2); c.fill();
+
+    c.fillStyle = "#475569";
+    c.fillRect(-16, -5, 4, 13); c.fillRect(12, -5, 4, 13);
+    c.strokeStyle = "#ff7700"; c.lineWidth = 1;
+    c.strokeRect(-16, -5, 4, 13); c.strokeRect(12, -5, 4, 13);
+
+    const cg1 = c.createRadialGradient(0, -1, 1, 0, -1, 6);
+    cg1.addColorStop(0, "#ffffff");
+    cg1.addColorStop(0.4, "#ffff00");
+    cg1.addColorStop(0.8, "#ff3300");
+    cg1.addColorStop(1, "rgba(255, 51, 0, 0)");
+    c.fillStyle = cg1;
+    c.beginPath(); c.arc(0, -1, 6, 0, Math.PI * 2); c.fill();
+
+    c.strokeStyle = "#ffffff"; c.lineWidth = 1.0;
+    c.beginPath(); c.moveTo(0, 23); c.lineTo(0, 12); c.stroke();
 
   } else if (subType === 2) {
-    c.fillStyle = "#0c151c"; c.strokeStyle = "#00ffaa"; c.lineWidth = 1.8;
+    c.fillStyle = "#081313"; c.strokeStyle = "#00ffaa"; c.lineWidth = 2.0;
     c.beginPath();
-    c.moveTo(0, 24); c.lineTo(18, 10); c.lineTo(18, -10); c.lineTo(0, -22); c.lineTo(-18, -10);
-    c.lineTo(-18, 10);
+    c.moveTo(0, 26); c.lineTo(20, 11); c.lineTo(20, -9); c.lineTo(0, -24); c.lineTo(-20, -9); c.lineTo(-20, 11);
     c.closePath(); c.fill(); c.stroke();
-    c.fillStyle = "#162835";
+
+    c.fillStyle = "#102322";
     c.beginPath();
-    c.moveTo(0, 17); c.lineTo(12, 7); c.lineTo(12, -7); c.lineTo(0, -15); c.lineTo(-12, -7); c.lineTo(-12, 7);
+    c.moveTo(0, 18); c.lineTo(13, 8); c.lineTo(13, -6); c.lineTo(0, -16); c.lineTo(-13, -6); c.lineTo(-13, 8);
     c.closePath(); c.fill();
-    c.fillStyle = "#223f54"; c.fillRect(-16, -5, 3, 10); c.fillRect(13, -5, 3, 10);
-    c.fillStyle = "#00ffaa"; c.beginPath(); c.arc(0, 0, 4, 0, Math.PI * 2); c.fill();
+
+    c.fillStyle = "#1e3a35";
+    c.fillRect(-17, -7, 4, 12); c.fillRect(13, -7, 4, 12);
+    c.strokeStyle = "#00ffcc"; c.lineWidth = 0.8;
+    c.strokeRect(-17, -7, 4, 12); c.strokeRect(13, -7, 4, 12);
+
+    const cg2 = c.createRadialGradient(0, 1, 1, 0, 1, 5.5);
+    cg2.addColorStop(0, "#ffffff");
+    cg2.addColorStop(0.5, "#00ffaa");
+    cg2.addColorStop(1, "rgba(0, 255, 170, 0)");
+    c.fillStyle = cg2;
+    c.beginPath(); c.arc(0, 1, 5.5, 0, Math.PI * 2); c.fill();
+
+    c.strokeStyle = "rgba(0, 255, 170, 0.7)"; c.lineWidth = 1.0;
+    c.beginPath();
+    c.moveTo(-16, 5); c.lineTo(-8, 12);
+    c.moveTo(16, 5); c.lineTo(8, 12);
+    c.stroke();
 
   } else {
-    c.fillStyle = "#180a1e"; c.strokeStyle = "#c832ff"; c.lineWidth = 1.6;
+    c.fillStyle = "#130718"; c.strokeStyle = "#d946ef"; c.lineWidth = 1.8;
     c.beginPath();
-    c.moveTo(0, 24); c.lineTo(8, 11); c.lineTo(23, 17); c.lineTo(16, -14); c.lineTo(0, -6); c.lineTo(-16, -14); c.lineTo(-23, 17); c.lineTo(-8, 11);
+    c.moveTo(0, 26); c.lineTo(9, 12); c.lineTo(25, 19); c.lineTo(17, -15); c.lineTo(0, -7); c.lineTo(-17, -15); c.lineTo(-25, 19); c.lineTo(-9, 12);
     c.closePath(); c.fill(); c.stroke();
-    c.fillStyle = "#2d1338";
-    c.beginPath();
-    c.moveTo(0, 16); c.lineTo(6, 6); c.lineTo(15, 10); c.lineTo(10, -6); c.lineTo(0, 0); c.lineTo(-10, -6); c.lineTo(-15, 10); c.lineTo(-6, 6);
-    c.closePath(); c.fill();
-    c.strokeStyle = "#00f5ff"; c.lineWidth = 1.2;
-    c.beginPath(); c.moveTo(21, 14); c.lineTo(15, -12); c.moveTo(-21, 14); c.lineTo(-15, -12); c.stroke();
-    c.fillStyle = "#ff00a0"; c.beginPath(); c.arc(0, 4, 3, 0, Math.PI * 2); c.fill();
-  }
 
-  // 적 비행기 프레임 몰드 디테일 라인
-  c.strokeStyle = "rgba(255, 255, 255, 0.4)";
-  c.lineWidth = 0.8;
-  c.beginPath();
-  c.moveTo(-7, 4); c.lineTo(7, 4);
-  c.moveTo(0, -4); c.lineTo(0, 8);
-  c.stroke();
+    c.fillStyle = "#250f2e";
+    c.beginPath();
+    c.moveTo(0, 17); c.lineTo(7, 7); c.lineTo(16, 12); c.lineTo(11, -7); c.lineTo(0, -1); c.lineTo(-11, -7); c.lineTo(-16, 12); c.lineTo(-7, 7);
+    c.closePath(); c.fill();
+
+    c.strokeStyle = "#00f5ff"; c.lineWidth = 1.4;
+    c.beginPath();
+    c.moveTo(23, 16); c.lineTo(17, -13);
+    c.moveTo(-23, 16); c.lineTo(-17, -13);
+    c.stroke();
+
+    c.fillStyle = "#ff007f";
+    c.beginPath();
+    c.moveTo(0, 1); c.lineTo(3.5, 5.5); c.lineTo(0, 10); c.lineTo(-3.5, 5.5);
+    c.closePath(); c.fill();
+    c.strokeStyle = "#ffffff"; c.lineWidth = 0.9; c.stroke();
+  }
 
   c.restore();
 }
-
 const ROCK_PALETTES = [
   { fill: "#8c9ba5", stroke: "#e2e8f0" },
   { fill: "#9ca3af", stroke: "#f1f5f9" },
@@ -728,16 +842,28 @@ function drawVectorEliteAsteroid(c, rockId, rotDir, colorIdx, curTime) {
   c.fill();
   c.stroke();
 
+  // 발광 에너지 크랙 (지열선)
+  c.strokeStyle = "#00f5ff";
+  c.lineWidth = 1.2;
+  c.beginPath();
+  c.moveTo(-15, -10); c.lineTo(-2, 4); c.lineTo(12, -8);
+  c.moveTo(-2, 4); c.lineTo(5, 20);
+  c.stroke();
+
+  // 입체 질감 3D 크레이터
   const crPos = [
-    { x: -8, y: -10, r: 4.8 },
-    { x: 10, y: -4, r: 5.5 },
-    { x: -2, y: 12, r: 4.2 }
+    { x: -8, y: -12, r: 6.0 },
+    { x: 12, y: 10, r: 5.0 },
+    { x: -14, y: 12, r: 4.2 }
   ];
   crPos.forEach(cr => {
-    c.fillStyle = "#cbd5e1";
+    c.fillStyle = "#1e293b";
     c.beginPath(); c.arc(cr.x, cr.y, cr.r, 0, Math.PI * 2); c.fill();
-    c.fillStyle = "#64748b";
-    c.beginPath(); c.arc(cr.x, cr.y, cr.r * 0.55, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "#94a3b8";
+    c.lineWidth = 1.2;
+    c.stroke();
+    c.fillStyle = "#0f172a";
+    c.beginPath(); c.arc(cr.x - 1, cr.y - 1, cr.r * 0.45, 0, Math.PI * 2); c.fill();
   });
 
   c.restore();
