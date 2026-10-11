@@ -1083,8 +1083,8 @@ class MissileShadow {
   draw() {
     if (this.life <= 0) return;
     ctx.save();
-    ctx.globalAlpha = (this.life / this.totalLife) * 0.5;
-    ctx.fillStyle = "#ff007f";
+    ctx.globalAlpha = (this.life / this.totalLife) * 0.65;
+    ctx.fillStyle = "#ff55bb"; // 보다 밝고 화사한 네온 마젠타 톤
     ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
@@ -1103,9 +1103,9 @@ class HomingMissile {
   update(dt, enemiesList) {
     this.life -= dt;
     this.shadowTimer += dt;
-    if (this.shadowTimer >= 0.04) {
+    if (this.shadowTimer >= 0.02) { // 50% 단축 (간격 촘촘화)
       this.shadowTimer = 0;
-      if (missileShadows.length < 60) {
+      if (missileShadows.length < 120) {
         missileShadows.push(new MissileShadow(this.x, this.y, this.radius));
       }
     }
@@ -2207,16 +2207,18 @@ class Enemy {
   }
 }
 
-function safeKillEnemy(e, customColor="#ffe600") {
+function safeKillEnemy(e, customColor="#ffe600", isHedgehogKill=false) {
   if (!e || e.isDead) return false;
   e.isDead = true;
   e.hp = 0;
   const addScore = e.isHeavy ? 5 : 1;
   score = Math.max(0, Math.floor(score + addScore));
 
-  const isBuffActive = (player && (player.shieldRemain > 0 || player.laserWeaponTimer > 0 || player.clonePlaneTimer > 0));
-  const effectiveGauge = isBuffActive ? (CONFIG.BASE_GAUGE_PER_KILL * 0.3) : CONFIG.BASE_GAUGE_PER_KILL;
-  skillGauge = Math.min(CONFIG.MAX_SKILL_GAUGE, skillGauge + effectiveGauge);
+  if (!isHedgehogKill) {
+    const isBuffActive = (player && (player.shieldRemain > 0 || player.laserWeaponTimer > 0 || player.clonePlaneTimer > 0));
+    const effectiveGauge = isBuffActive ? (CONFIG.BASE_GAUGE_PER_KILL * 0.3) : CONFIG.BASE_GAUGE_PER_KILL;
+    skillGauge = Math.min(CONFIG.MAX_SKILL_GAUGE, skillGauge + effectiveGauge);
+  }
 
   if (!e.isBeingSucked) {
     if (e.isHeavy) {
@@ -2247,7 +2249,7 @@ function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
 
   if (e.hasShield) {
     e.shieldHits++;
-    e.freezeTimer = 0.2;
+    e.freezeTimer = 0.07; // 기존 0.2초 대비 50% 단축
     e.vx = 0;
     if (explosions.length < 35) explosions.push(new ExplosionFX(e.x, e.y, "#00f5ff"));
     playTone(820, 0.05, "triangle", 0, 0.06);
@@ -2522,10 +2524,6 @@ function triggerSlotSequence() {
     const e = enemies[i];
     if (!e.isDead && e.hp > 0 && e.y >= -20) validTargets.push({ type: "ENEMY", obj: e, x: e.x, y: e.y });
   }
-  for (let i = 0; i < meteorManager.meteors.length; i++) {
-    const m = meteorManager.meteors[i];
-    if (m.active && m.y >= -20) validTargets.push({ type: "METEOR", obj: m, x: m.x, y: m.y });
-  }
 
   validTargets.sort((a, b) => b.y - a.y);
   const colors = ["#00f5ff", "#ff007f", "#39ff14", "#ffe600", "#bf00ff", "#ff5500", "#ffffff"];
@@ -2556,11 +2554,7 @@ function triggerSlotSequence() {
         if (tgt.type === "ENEMY") {
           const e = tgt.obj;
           e.hasShield = false;
-          safeKillEnemy(e, c);
-        } else if (tgt.type === "METEOR") {
-          tgt.obj.active = false;
-          explosions.push(new ExplosionFX(tgt.x, tgt.y, "#ff7700"));
-          score += 5;
+          safeKillEnemy(e, c, true); // 고슴도치 처치 플래그 true 전달 (게이지 미충전)
         }
 
         playTone(950 + ((b + subIdx) % 5) * 80, 0.12, "sawtooth", -350, 0.14);
@@ -3104,7 +3098,7 @@ function safeGameLoop(now) {
 
       if (!isNukingTransition && !isFrozen && elapsed - lastSpawnTime > spawnInterval) {
         lastSpawnTime = elapsed;
-        let hpMultiplier = (elapsed >= 60.0) ? Math.pow(1.3, Math.floor((elapsed - 60.0) / 20.0)) : 1.0;
+        let hpMultiplier = (elapsed >= 60.0) ? Math.pow(1.4, Math.floor((elapsed - 60.0) / 20.0)) : 1.0;
         const calculatedHp = Math.max(1, Math.round((2 + Math.random() * 3) * hpScale * hpMultiplier));
 
         enemies.push(new Enemy(calculatedHp, CONFIG.BASE_ENEMY_SPEED + Math.min(1.0, elapsed / 180.0) * 3.5, Math.floor(Math.random() * 4), false, false));
