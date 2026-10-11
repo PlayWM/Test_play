@@ -149,19 +149,18 @@ function fetchTop10() {
           const items = Object.values(data).filter(v => v && v.name && v.score !== undefined);
           items.sort((a, b) => b.score - a.score);
           top10List = items.slice(0, 10).map(v => {
-            let shipName = "Random";
+            let shipName = "";
             if (v.ship === "Legend" || v.pType === 4) shipName = "Legend";
             else if (v.ship === "Power" || v.pType === 1) shipName = "Power";
-            else if (v.ship === "Speed" || v.ship === "Missile" || v.pType === 0) shipName = "Speed";
+            else if (v.ship === "Missile" || v.ship === "Speed" || v.pType === 0) shipName = "Missile";
             else if (v.ship === "Twin" || v.pType === 2) shipName = "Twin";
             else if (v.ship === "Random") shipName = "Random";
-            else if (v.ship) shipName = sanitizeText(v.ship);
 
             return {
               name: sanitizeText(v.name),
               score: Math.floor(Number(v.score) || 0),
               country: sanitizeText(v.country) || "Global",
-              ship: `[${shipName}]`
+              ship: shipName ? `[${shipName}]` : ""
             };
           });
         }
@@ -180,7 +179,7 @@ function uploadScore(name, finalScore) {
   if (player) {
     if (player.pType === 4 || player.name === "Legend") shipType = "Legend";
     else if (player.pType === 1 || player.name === "Power") shipType = "Power";
-    else if (player.pType === 0 || player.name === "Missile" || player.name === "Speed") shipType = "Speed";
+    else if (player.pType === 0 || player.name === "Missile" || player.name === "Speed") shipType = "Missile";
     else if (player.pType === 2 || player.name === "Twin") shipType = "Twin";
     else shipType = "Random";
   }
