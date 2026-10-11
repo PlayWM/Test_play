@@ -459,6 +459,23 @@ function drawVectorPlayer(c, type, color, scale = 1.0, flameHeight = 0, isMissil
     c.lineTo(tx + tw / 2 - 1, startY);
     c.closePath();
     c.fill();
+
+    // 부스터 가속 시 중심부에 역동적인 고열 레드/오렌지 코어 추가
+    if (safeFlame > 0) {
+      const coreH = flH * 0.65;
+      const coreGrad = c.createLinearGradient(tx, startY, tx, startY + coreH);
+      coreGrad.addColorStop(0, "#ffffff");
+      coreGrad.addColorStop(0.25, "#ff0044");
+      coreGrad.addColorStop(0.65, "#ff5500");
+      coreGrad.addColorStop(1, "rgba(255, 0, 68, 0)");
+      c.fillStyle = coreGrad;
+      c.beginPath();
+      c.moveTo(tx - (tw * 0.3), startY);
+      c.lineTo(tx, startY + coreH);
+      c.lineTo(tx + (tw * 0.3), startY);
+      c.closePath();
+      c.fill();
+    }
   };
 
   if (type === 2) { drawThruster(-11, 14, 6); drawThruster(11, 14, 6); }
@@ -1023,7 +1040,7 @@ shoot(curTime, bullets) {
       else if (this.pType === 1) themeColor = "#ff2244";
       else if (this.pType === 2) themeColor = "#00ff66";
 
-      const thrustFlameExtra = this.isMovingUp ? 10 : 0;
+      const thrustFlameExtra = this.isMovingUp ? 15 : 0;
       drawVectorPlayer(ctx, this.pType, themeColor, 1.2, thrustFlameExtra, isMissileFlash);
 
       if (this.laserWeaponTimer > 0) {
