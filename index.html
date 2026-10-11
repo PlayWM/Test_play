@@ -2197,7 +2197,7 @@ function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   if (hitImpacts.length < 30) hitImpacts.push(new BulletHitImpactFX(e.x, e.y, bType));
 
   if (e.isHeavy) {
-    const hitAmount = (bType === "MISSILE_NEEDLE") ? 2.5 : 1;
+    const hitAmount = (bType === "MISSILE_NEEDLE") ? (20 / 12) : 1;
     e.shieldHits = (e.shieldHits || 0) + hitAmount;
     if (explosions.length < 35) explosions.push(new ExplosionFX(e.x, e.y, "#cbd5e1"));
     playTone(600, 0.05, "sawtooth", -100, 0.08);
