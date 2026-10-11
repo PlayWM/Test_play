@@ -108,6 +108,23 @@ function drawDynamicDeepSpaceBackground(c, dt) {
 
   stars.forEach(s => { s.update(); s.draw(); });
 }
+let recommendedSkillCode = "POWER_UP";
+
+function calculateRecommendedSkill() {
+  if (!player) return "POWER_UP";
+  const p = player.powerStat || 1;
+  const m = player.missileStat || 1;
+  const r = player.fireRateStat || 1;
+  const time = inGameElapsedTime || 0;
+
+  // 60초 이후 보스 및 고체력 적/돌맹이 급증 시 파워 우선
+  if (time >= 60 && p <= Math.min(m, r) + 1) return "POWER_UP";
+  // 다수의 일반 적이 쏟아지는 구간(20~60초)에서는 유도 미사일 및 연사 우선
+  if (m <= p && m <= r) return "MISSILE_UP";
+  if (r <= p && r <= m) return "FIRE_RATE";
+  if (p <= m && p <= r) return "POWER_UP";
+  return "POWER_UP";
+}
 
 // =================================================================
 // 2. 국가 및 리더보드
@@ -1121,19 +1138,36 @@ class StationaryMissileLaser {
     let blockedObj = null;
     let blockY = 0;
 
+    // 돌맹이 충돌 후보 검사
     enemies.filter(e => e.isHeavy && !e.isDead && e.hp > 0 && e.y < this.startY && e.y >= 20).forEach(e => {
       if (Math.abs(e.x - this.x) <= e.radius + 6) {
         if (!blockedObj || e.y > blockY) { blockedObj = e; blockY = e.y + e.radius; }
       }
     });
 
+    // 혜성 충돌 후보 검사
     meteorManager.meteors.filter(m => m.active && m.y < this.startY && m.y >= 20).forEach(m => {
       if (Math.abs(m.x - this.x) <= m.radius + 6) {
         if (!blockedObj || m.y > blockY) { blockedObj = m; blockY = m.y + m.radius; }
       }
     });
 
-    if (blockedObj) {
+    // 일반 적 타겟 탐색
+    const valids1 = enemies.filter(e => {
+      if (e.hp <= 0 || e.isDead || e.isHeavy) return false;
+      if (e.y >= this.startY || e.y < 20) return false;
+      return Math.abs(e.x - this.x) <= maxSearchWidth + e.radius;
+    });
+
+    // 일반 적이 돌맹이보다 아래쪽(기체와 돌맹이 사이)에 존재하면 적을 먼저 타격
+    let closerEnemy = null;
+    if (valids1.length > 0) {
+      valids1.sort((a, b) => Math.hypot(a.x - this.x, a.y - this.startY) - Math.hypot(b.x - this.x, b.y - this.startY));
+      closerEnemy = valids1[0];
+    }
+
+    // 돌맹이가 있고, 그 돌맹이보다 가까운 적이 없을 때만 돌맹이 충돌 반사 처리
+    if (blockedObj && (!closerEnemy || closerEnemy.y < blockY)) {
       this.path.push({ x: this.x, y: blockY });
       const shardLen = 88;
       for (let s = 0; s < 5; s++) {
@@ -1147,13 +1181,7 @@ class StationaryMissileLaser {
       return;
     }
 
-    const valids1 = enemies.filter(e => {
-      if (e.hp <= 0 || e.isDead || e.isHeavy) return false;
-      if (e.y >= this.startY || e.y < 20) return false;
-      return Math.abs(e.x - this.x) <= maxSearchWidth + e.radius;
-    });
-
-    if (valids1.length === 0) {
+    if (!closerEnemy) {
       this.path.push({ x: this.x, y: 0 });
       return;
     }
@@ -2383,9 +2411,12 @@ function triggerSlotSequence() {
   hedgehogLauncher.flashAlpha = 1.0;
   hedgehogLauncher.timeStopTimer = 2.0;
 
+  // 내 비행기가 발사한 모든 총알, 미사일, 레이저, 보스 탄환 즉시 화면에서 제거
   bullets = [];
   bossMissiles = [];
   homingMissiles = [];
+  stationaryLasers = [];
+  activeLasers = [];
 
   playTone(800, 0.35, "sawtooth", -300, 0.15);
 
@@ -2456,15 +2487,18 @@ function enterSlotMenu() {
   statZoomIndex = -1;
   isTouchActive = false;
 
+  // 2. 적 노출 수준과 내 비행기 상태를 분석하여 추천 스킬 실시간 판정
+  recommendedSkillCode = calculateRecommendedSkill();
+
+  // 7. 내 비행기 높이(약 48px) 한 개만큼 올라간 위치로 이동
   if (player) {
     player.x = LOGICAL_WIDTH / 2;
-    player.y = LOGICAL_HEIGHT - player.radius - 20;
+    player.y = LOGICAL_HEIGHT - player.radius - 68;
     player.targetX = player.x;
     player.targetY = player.y;
   }
   gameState = 2;
 }
-
 // 3. 스킬 및 옵션 선택 시 확인 쇼케이스 창 출력 (POWER, MISSILE, RATE)
 function applyChosenSkill(code, customDuration=null) {
   let titleStr = "";
@@ -2547,12 +2581,11 @@ function handlePointerDown(e) {
     }
   } else if (gameState === 2 && !randomPickShowcaseActive) {
     // 3. 상단 스탯 상태창 터치 시 2배 확대 (0.3초간)
-    const statBoxes = [
-      { x: 35, y: 75, w: 115, h: 58 },
-      { x: 167, y: 75, w: 115, h: 58 },
-      { x: 300, y: 75, w: 115, h: 58 }
-    ];
-    for (let i = 0; i < statBoxes.length; i++) {
+   const statBoxes = [
+      { x: 35, y: 80, w: 115, h: 58 },
+      { x: 167, y: 80, w: 115, h: 58 },
+      { x: 300, y: 80, w: 115, h: 58 }
+    ];    for (let i = 0; i < statBoxes.length; i++) {
       let sb = statBoxes[i];
       if (coords.x >= sb.x && coords.x <= sb.x + sb.w && coords.y >= sb.y && coords.y <= sb.y + sb.h) {
         statZoomIndex = i;
@@ -2563,7 +2596,7 @@ function handlePointerDown(e) {
     }
 
     // 3. 슬롯머신(룰렛) 클릭 판정 (Y: 235~340)
-    const btnMult = { x: 35, y: 235, w: 380, h: 105 };
+    const btnMult = { x: 35, y: 230, w: 380, h: 105 };
     if (coords.x >= btnMult.x && coords.x <= btnMult.x + btnMult.w && coords.y >= btnMult.y && coords.y <= btnMult.y + btnMult.h) {
       const picked = shuffledMultiplierPool[currentMultIndex];
       if (picked.type === "PWR") player.powerStat += picked.val;
@@ -2582,15 +2615,14 @@ function handlePointerDown(e) {
     }
 
     // 3. 하단 6개 카드 클릭 판정 (Y: 375~545)
-    const pickCards = [
-      { code: "POWER_UP", x: 35, y: 375, w: 115, h: 75 },
-      { code: "MISSILE_UP", x: 167, y: 375, w: 115, h: 75 },
-      { code: "FIRE_RATE", x: 300, y: 375, w: 115, h: 75 },
-      { code: "SHIELD", x: 35, y: 470, w: 115, h: 75, active: player && player.shieldRemain > 0 },
-      { code: "LASER_WEAPON", x: 167, y: 470, w: 115, h: 75, active: player && player.laserWeaponTimer > 0 },
-      { code: "CLONE_SHIP", x: 300, y: 470, w: 115, h: 75, active: player && player.clonePlaneTimer > 0 }
+   const pickCards = [
+      { code: "POWER_UP", x: 35, y: 370, w: 115, h: 75 },
+      { code: "MISSILE_UP", x: 167, y: 370, w: 115, h: 75 },
+      { code: "FIRE_RATE", x: 300, y: 370, w: 115, h: 75 },
+      { code: "SHIELD", x: 35, y: 465, w: 115, h: 75, active: player && player.shieldRemain > 0 },
+      { code: "LASER_WEAPON", x: 167, y: 465, w: 115, h: 75, active: player && player.laserWeaponTimer > 0 },
+      { code: "CLONE_SHIP", x: 300, y: 465, w: 115, h: 75, active: player && player.clonePlaneTimer > 0 }
     ];
-
     for (let c of pickCards) {
       if (coords.x >= c.x && coords.x <= c.x + c.w && coords.y >= c.y && coords.y <= c.y + c.h) {
         if (c.active) return;
@@ -2697,9 +2729,10 @@ function getWeightedMultiplierItem() {
   if (r < 0.50) val = 1;
   else if (r < 0.80) val = 2;
   else val = 3;
-  return { type: t.type, val: val, label: `${t.labelPrefix} +${val} (x${val})`, col: t.col };
+  // (x1) 문구는 완전히 제거하고 x2, x3만 표기
+  const multText = val > 1 ? ` (x${val})` : "";
+  return { type: t.type, val: val, label: `${t.labelPrefix} +${val}${multText}`, col: t.col };
 }
-
 function generateWeightedRoulettePool(length = 24) {
   const pool = [];
   for (let i = 0; i < length; i++) {
@@ -3274,18 +3307,17 @@ function safeGameLoop(now) {
       ctx.fillText("SKILL GAUGE", gx, gy - 6);
       ctx.restore();
 
-    } else if (gameState === 2) {
-      // 3. 타이틀: "PILOT SKILL STATUS"
+} else if (gameState === 2) {
+      // 3. 상하단 균등 여백 배치 (Y 오프셋 재정렬)
       ctx.textAlign = "center";
       ctx.fillStyle = "#00f5ff";
       ctx.font = `bold 20px ${FONT_FAMILY}`;
-      ctx.fillText("PILOT SKILL STATUS", LOGICAL_WIDTH / 2, 45);
+      ctx.fillText("PILOT SKILL STATUS", LOGICAL_WIDTH / 2, 55);
 
-      // 상단 3개 스탯창 (Y: 75, H: 58)
       const statBoxes = [
-        { title: "POWER", lv: player ? Math.round(player.powerStat) : 1, col: "#ff0080", x: 35, y: 75, w: 115, h: 58 },
-        { title: "MISSILE", lv: player ? Math.round(player.missileStat) : 1, col: "#00f5ff", x: 167, y: 75, w: 115, h: 58 },
-        { title: "RATE", lv: player ? Math.round(player.fireRateStat) : 1, col: "#ffe600", x: 300, y: 75, w: 115, h: 58 }
+        { title: "POWER", lv: player ? Math.round(player.powerStat) : 1, col: "#ff0080", x: 35, y: 80, w: 115, h: 58 },
+        { title: "MISSILE", lv: player ? Math.round(player.missileStat) : 1, col: "#00f5ff", x: 167, y: 80, w: 115, h: 58 },
+        { title: "RATE", lv: player ? Math.round(player.fireRateStat) : 1, col: "#ffe600", x: 300, y: 80, w: 115, h: 58 }
       ];
 
       const isZooming = (statZoomIndex >= 0 && (curTime - statZoomStartTime < 0.3));
@@ -3304,7 +3336,6 @@ function safeGameLoop(now) {
         ctx.font = `bold 11px ${FONT_FAMILY}`;
         ctx.fillText(sb.title, sb.x + sb.w / 2, sb.y + 20);
 
-        // 3. 터치 시 2배 확대 (0.3초간)
         const zoomThis = isZooming && (statZoomIndex === idx);
         ctx.fillStyle = sb.col;
         if (zoomThis) {
@@ -3317,14 +3348,13 @@ function safeGameLoop(now) {
         ctx.restore();
       });
 
-      // 3. 스탯창 높이(58px)만큼 빈공간을 둔 후 "SKILLS & SPECIAL OPTIONS" 텍스트
+      // 8. 슬롯머신 윗쪽 문구: 최상단 타이틀과 크기 및 색상 일치 (bold 20px, #00f5ff)
       ctx.textAlign = "center";
-      ctx.fillStyle = "#ffffff";
-      ctx.font = `bold 16px ${FONT_FAMILY}`;
-      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 210);
+      ctx.fillStyle = "#00f5ff";
+      ctx.font = `bold 20px ${FONT_FAMILY}`;
+      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 205);
 
-      // 슬롯머신 창 (Y: 235, H: 105)
-      const btnMult = { x: 35, y: 235, w: PERIMETER_W, h: PERIMETER_H };
+      const btnMult = { x: 35, y: 230, w: PERIMETER_W, h: PERIMETER_H };
       if (curTime - lastMultRollTime >= 0.048) {
         lastMultRollTime = curTime;
         currentMultIndex = (currentMultIndex + 1) % shuffledMultiplierPool.length;
@@ -3339,9 +3369,8 @@ function safeGameLoop(now) {
       ctx.lineWidth = 2.0;
       ctx.stroke();
 
-      // 슬롯머신 외곽선 추적 별 (각 별의 방향(dir)에 따라 공전 및 자전)
       ORBIT_STARS.forEach((st) => {
-        st.dist += st.speed * st.dir * dt; // 시계/반시계 방향 이동
+        st.dist += st.speed * st.dir * dt;
         const pt = getPerimeterPoint(btnMult.x, btnMult.y, st.dist);
         const rotAng = (curTime * ((Math.PI * 2) / st.rotDuration)) * st.dir;
 
@@ -3366,18 +3395,20 @@ function safeGameLoop(now) {
       ctx.fillText("x1 (50%) / x2 (30%) / x3 (20%) CHANCE", btnMult.x + btnMult.w / 2, btnMult.y + 88);
       ctx.restore();
 
-      // 3 & 4. 슬롯머신 아래 6개 창 (POWER+1, MISSILE+1, RATE+1 / SHIELD, LASER, TWIN)
+      // 1. 개별 반짝임 삭제 및 2. 추천 스킬 0.1초 반짝임 + [RECOMMENDED] 문구
       const row1Cards = [
-        { code: "POWER_UP", title: "POWER +1", desc: "INSTANT", col: "#ff0080", x: 35, y: 375, w: 115, h: 75, phase: 0 },
-        { code: "MISSILE_UP", title: "MISSILE +1", desc: "INSTANT", col: "#00f5ff", x: 167, y: 375, w: 115, h: 75, phase: 1 },
-        { code: "FIRE_RATE", title: "RATE +1", desc: "INSTANT", col: "#ffe600", x: 300, y: 375, w: 115, h: 75, phase: 2 }
+        { code: "POWER_UP", title: "POWER +1", desc: "INSTANT", col: "#ff0080", x: 35, y: 370, w: 115, h: 75 },
+        { code: "MISSILE_UP", title: "MISSILE +1", desc: "INSTANT", col: "#00f5ff", x: 167, y: 370, w: 115, h: 75 },
+        { code: "FIRE_RATE", title: "RATE +1", desc: "INSTANT", col: "#ffe600", x: 300, y: 370, w: 115, h: 75 }
       ];
 
       const row2Cards = [
-        { code: "SHIELD", title: "SHIELD", desc: "1~30s", col: "#32ff78", x: 35, y: 470, w: 115, h: 75, active: player && player.shieldRemain > 0, phase: 3 },
-        { code: "LASER_WEAPON", title: "LASER", desc: "1~30s", col: "#00f5ff", x: 167, y: 470, w: 115, h: 75, active: player && player.laserWeaponTimer > 0, phase: 4 },
-        { code: "CLONE_SHIP", title: "TWIN", desc: "1~30s", col: "#78a0ff", x: 300, y: 470, w: 115, h: 75, active: player && player.clonePlaneTimer > 0, phase: 5 }
+        { code: "SHIELD", title: "SHIELD", desc: "1~30s", col: "#32ff78", x: 35, y: 465, w: 115, h: 75, active: player && player.shieldRemain > 0 },
+        { code: "LASER_WEAPON", title: "LASER", desc: "1~30s", col: "#00f5ff", x: 167, y: 465, w: 115, h: 75, active: player && player.laserWeaponTimer > 0 },
+        { code: "CLONE_SHIP", title: "TWIN", desc: "1~30s", col: "#78a0ff", x: 300, y: 465, w: 115, h: 75, active: player && player.clonePlaneTimer > 0 }
       ];
+
+      const isRecFlash = Math.floor(curTime / 0.10) % 2 === 0;
 
       const allPickCards = [...row1Cards, ...row2Cards];
       allPickCards.forEach(c => {
@@ -3388,15 +3419,12 @@ function safeGameLoop(now) {
         drawRoundRect(ctx, c.x, c.y, c.w, c.h, 10);
         ctx.fill();
 
-        // 5. 0.2초간 반짝이는 개별 주기 특수효과 (각 창마다 phase 차이 적용)
-        const cycle = (curTime * 1.5 + c.phase * 0.4) % 1.5;
-        const isBlinking = cycle < 0.20;
-
-        if (isBlinking && !c.active) {
+        const isRec = (c.code === recommendedSkillCode);
+        if (isRec && isRecFlash && !c.active) {
           ctx.shadowColor = "#ffffff";
-          ctx.shadowBlur = 14;
+          ctx.shadowBlur = 12;
           ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = 2.8;
+          ctx.lineWidth = 2.5;
         } else {
           ctx.strokeStyle = c.col;
           ctx.lineWidth = 1.8;
@@ -3411,6 +3439,22 @@ function safeGameLoop(now) {
         ctx.font = `bold 11px ${FONT_FAMILY}`;
         ctx.fillText(c.desc, c.x + c.w / 2, c.y + 55);
 
+        // 추천 스킬 외곽 라인 하단에 걸치게 영문 표시
+        if (isRec && !c.active) {
+          ctx.save();
+          ctx.fillStyle = "rgba(10, 16, 35, 0.95)";
+          drawRoundRect(ctx, c.x + 8, c.y + c.h - 8, c.w - 16, 16, 4);
+          ctx.fill();
+          ctx.strokeStyle = "#00f5ff";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          ctx.fillStyle = "#00f5ff";
+          ctx.font = `bold 9px ${FONT_FAMILY}`;
+          ctx.fillText("RECOMMENDED", c.x + c.w / 2, c.y + c.h + 4);
+          ctx.restore();
+        }
+
         if (c.active) {
           ctx.globalAlpha = 1.0;
           ctx.fillStyle = "#ff2244";
@@ -3422,7 +3466,6 @@ function safeGameLoop(now) {
         ctx.restore();
       });
 
-      // 3. 선택 확인 쇼케이스 창 (POWER, MISSILE, RATE 및 슬롯머신 배수)
       if (randomPickShowcaseActive) {
         const showcaseElapsed = curTime - randomPickShowcaseStartTime;
         ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
@@ -3457,7 +3500,6 @@ function safeGameLoop(now) {
           playChosenImmediateReturn();
         }
       }
-
     } else if (gameState === 5) {
       const popW = 320, popH = 240;
       const popX = LOGICAL_WIDTH / 2 - popW / 2;
