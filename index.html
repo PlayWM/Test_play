@@ -2014,7 +2014,6 @@ class Bullet {
       ctx.beginPath(); ctx.ellipse(0, 0, 3.2, 9, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = "#ffffff";
       ctx.beginPath(); ctx.ellipse(0, 0, 1.4, 5, 0, Math.PI * 2); ctx.fill();
-
     } else {
       ctx.shadowColor = "#ffe600"; ctx.shadowBlur = 5;
       ctx.fillStyle = "#ffe600";
@@ -3666,115 +3665,6 @@ function safeGameLoop(now) {
           ctx.shadowColor = "#ff0000";
           ctx.shadowBlur = 6;
           ctx.fillText("[SOLD OUT]", c.x + c.w / 2, c.y + 38);
-        }
-        ctx.restore();
-      });      if (curTime - lastMultRollTime >= 0.048) {
-        lastMultRollTime = curTime;
-        currentMultIndex = (currentMultIndex + 1) % shuffledMultiplierPool.length;
-      }
-      const currentMultOption = shuffledMultiplierPool[currentMultIndex];
-
-      ctx.save();
-      ctx.fillStyle = "rgba(20, 26, 52, 0.95)";
-      drawRoundRect(ctx, btnMult.x, btnMult.y, btnMult.w, btnMult.h, 12);
-      ctx.fill();
-      ctx.strokeStyle = "#ffd700";
-      ctx.lineWidth = 2.0;
-      ctx.stroke();
-
-      ORBIT_STARS.forEach((st) => {
-        st.dist += st.speed * st.dir * dt;
-        const pt = getPerimeterPoint(btnMult.x, btnMult.y, st.dist);
-        const rotAng = (curTime * ((Math.PI * 2) / st.rotDuration)) * st.dir;
-
-        ctx.save();
-        ctx.translate(pt.x, pt.y);
-        ctx.rotate(rotAng);
-        ctx.fillStyle = st.color;
-        drawStarShape(ctx, 0, 0, 5, st.baseSize, st.baseSize * 0.45);
-        ctx.fill();
-        ctx.restore();
-      });
-
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#ffd700";
-      ctx.font = `bold 12px ${FONT_FAMILY}`;
-      ctx.fillText("★ [ RANDOM CHANCE : UP TO 3X MULTIPLIER ] ★", btnMult.x + btnMult.w / 2, btnMult.y + 24);
-      ctx.fillStyle = currentMultOption.col;
-      ctx.font = `bold 24px ${FONT_FAMILY}`;
-      ctx.fillText(currentMultOption.label, btnMult.x + btnMult.w / 2, btnMult.y + 60);
-      ctx.fillStyle = "#a5c0e0";
-      ctx.font = `11px ${FONT_FAMILY}`;
-      ctx.fillText("x1 (50%) / x2 (30%) / x3 (20%) CHANCE", btnMult.x + btnMult.w / 2, btnMult.y + 88);
-      ctx.restore();
-
-      // 1. 개별 반짝임 삭제 및 2. 추천 스킬 0.1초 반짝임 + [RECOMMENDED] 문구
-      const row1Cards = [
-        { code: "POWER_UP", title: "POWER +1", desc: "INSTANT", col: "#ff0080", x: 35, y: 442, w: 115, h: 72 },
-        { code: "MISSILE_UP", title: "MISSILE +1", desc: "INSTANT", col: "#00f5ff", x: 167, y: 442, w: 115, h: 72 },
-        { code: "FIRE_RATE", title: "RATE +1", desc: "INSTANT", col: "#ffe600", x: 300, y: 442, w: 115, h: 72 }
-      ];
-
-      const row2Cards = [
-        { code: "SHIELD", title: "SHIELD", desc: "1~30s", col: "#32ff78", x: 35, y: 524, w: 115, h: 72, active: player && player.shieldRemain > 0 },
-        { code: "LASER_WEAPON", title: "LASER", desc: "1~30s", col: "#00f5ff", x: 167, y: 524, w: 115, h: 72, active: player && player.laserWeaponTimer > 0 },
-        { code: "CLONE_SHIP", title: "TWIN", desc: "1~30s", col: "#78a0ff", x: 300, y: 524, w: 115, h: 72, active: player && player.clonePlaneTimer > 0 }
-      ];
-
-      const isRecFlash = Math.floor(curTime / 0.10) % 2 === 0;
-
-      const allPickCards = [...row1Cards, ...row2Cards];
-      allPickCards.forEach(c => {
-        ctx.save();
-        if (c.active) ctx.globalAlpha = 0.50;
-
-        ctx.fillStyle = "rgba(10, 16, 35, 0.85)";
-        drawRoundRect(ctx, c.x, c.y, c.w, c.h, 10);
-        ctx.fill();
-
-        const isRec = (c.code === recommendedSkillCode);
-        if (isRec && isRecFlash && !c.active) {
-          ctx.shadowColor = "#ffffff";
-          ctx.shadowBlur = 12;
-          ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = 2.5;
-        } else {
-          ctx.strokeStyle = c.col;
-          ctx.lineWidth = 1.8;
-        }
-        ctx.stroke();
-
-        ctx.textAlign = "center";
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `bold 13px ${FONT_FAMILY}`;
-        ctx.fillText(c.title, c.x + c.w / 2, c.y + 32);
-        ctx.fillStyle = c.col;
-        ctx.font = `bold 11px ${FONT_FAMILY}`;
-        ctx.fillText(c.desc, c.x + c.w / 2, c.y + 55);
-
-        // 추천 스킬 외곽 라인 하단에 걸치게 영문 표시
-        if (isRec && !c.active) {
-          ctx.save();
-          ctx.fillStyle = "rgba(10, 16, 35, 0.95)";
-          drawRoundRect(ctx, c.x + 8, c.y + c.h - 8, c.w - 16, 16, 4);
-          ctx.fill();
-          ctx.strokeStyle = "#00f5ff";
-          ctx.lineWidth = 1;
-          ctx.stroke();
-
-          ctx.fillStyle = "#00f5ff";
-          ctx.font = `bold 9px ${FONT_FAMILY}`;
-          ctx.fillText("RECOMMENDED", c.x + c.w / 2, c.y + c.h + 4);
-          ctx.restore();
-        }
-
-        if (c.active) {
-          ctx.globalAlpha = 1.0;
-          ctx.fillStyle = "#ff2244";
-          ctx.font = `bold 14px ${FONT_FAMILY}`;
-          ctx.shadowColor = "#ff0000";
-          ctx.shadowBlur = 6;
-          ctx.fillText("[SOLD OUT]", c.x + c.w / 2, c.y + 44);
         }
         ctx.restore();
       });
