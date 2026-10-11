@@ -305,7 +305,7 @@ function startBGMEngine() {
         osc.type = "sine";
         const f = activeMelody[(bgmStep / 4) % activeMelody.length];
         osc.frequency.setValueAtTime(f, now);
-        g.gain.setValueAtTime(0.026, now);
+        g.gain.setValueAtTime(0.05, now);
         g.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
         osc.connect(g); g.connect(audioCtx.destination);
         osc.start(now); osc.stop(now + 0.45);
@@ -554,7 +554,7 @@ function drawVectorPlayer(c, type, color, scale = 1.0, flameHeight = 0, isMissil
     drawWingMissilePod(c, -26, 6, isMissileFlash);
     drawWingMissilePod(c, 26, 6, isMissileFlash);
 
-  } else {
+} else {
     c.fillStyle = darkHull; c.strokeStyle = color; c.lineWidth = 1.6;
     c.beginPath();
     c.moveTo(0, -24); c.lineTo(18, 12); c.lineTo(0, 6); c.lineTo(-18, 12);
@@ -562,6 +562,18 @@ function drawVectorPlayer(c, type, color, scale = 1.0, flameHeight = 0, isMissil
     drawWingMissilePod(c, -18, 12, isMissileFlash);
     drawWingMissilePod(c, 18, 12, isMissileFlash);
   }
+
+  // 아군 기체 패널 라인 및 윙팁 스트로브 디테일
+  c.strokeStyle = "rgba(255, 255, 255, 0.45)";
+  c.lineWidth = 0.8;
+  c.beginPath();
+  c.moveTo(-3, -12); c.lineTo(-1, -4);
+  c.moveTo(3, -12); c.lineTo(1, -4);
+  c.stroke();
+  c.fillStyle = (Math.sin(performance.now() * 0.015) > 0) ? "#ffffff" : color;
+  c.fillRect(-22, 8, 2, 2);
+  c.fillRect(20, 8, 2, 2);
+
   c.restore();
 }
 
@@ -624,6 +636,15 @@ function drawVectorRegularEnemy(c, subType) {
     c.beginPath(); c.moveTo(21, 14); c.lineTo(15, -12); c.moveTo(-21, 14); c.lineTo(-15, -12); c.stroke();
     c.fillStyle = "#ff00a0"; c.beginPath(); c.arc(0, 4, 3, 0, Math.PI * 2); c.fill();
   }
+
+  // 적 비행기 프레임 몰드 디테일 라인
+  c.strokeStyle = "rgba(255, 255, 255, 0.4)";
+  c.lineWidth = 0.8;
+  c.beginPath();
+  c.moveTo(-7, 4); c.lineTo(7, 4);
+  c.moveTo(0, -4); c.lineTo(0, 8);
+  c.stroke();
+
   c.restore();
 }
 
@@ -882,23 +903,36 @@ class Player {
 
     this.missileTimer += dt;
     let baseInterval = (this.missileStat >= 8) ? 6.0 : 5.0;
-    if (this.pType === 0) baseInterval *= 0.70;
+    if (this.pType === 0) baseInterval *= 0.70; // Type 0 주기 30% 감소
 
-    if (this.missileTimer >= baseInterval) {
-      this.missileTimer = 0;
-      this.missileFlashTime = performance.now() / 1000;
-      const dmg = this.getMissileDamage();
-      let burstCount = (this.missileStat >= 16) ? 4 : (this.missileStat >= 8 ? 2 : 1);
-      if (this.pType === 0) burstCount *= 2;
+    let burstCount = (this.missileStat >= 16) ? 4 : (this.missileStat >= 8 ? 2 : 1);
+    if (this.pType === 0) burstCount *= 2;
 
-      for (let b = 0; b < burstCount; b++) {
-        const delay = b * 150;
-        setTimeout(() => {
-          if (!player || !player.isAlive || gameState !== 1) return;
-          homingMissiles.push(new HomingMissile(this.x - 24, this.y - 6, -1.8, -7, dmg, "LEFT"));
-          homingMissiles.push(new HomingMissile(this.x + 24, this.y - 6, 1.8, -7, dmg, "RIGHT"));
-          playTone(550, 0.12, "sine", 200, 0.11);
-        }, delay);
+    if (this.pType === 0) {
+      // 쉬었다 몰아쏘지 않고 사이클 동안 균등한 간격으로 분할 발사
+      const subInterval = baseInterval / burstCount;
+      if (this.missileTimer >= subInterval) {
+        this.missileTimer -= subInterval;
+        this.missileFlashTime = performance.now() / 1000;
+        const dmg = this.getMissileDamage();
+        homingMissiles.push(new HomingMissile(this.x - 24, this.y - 6, -1.8, -7, dmg, "LEFT"));
+        homingMissiles.push(new HomingMissile(this.x + 24, this.y - 6, 1.8, -7, dmg, "RIGHT"));
+        playTone(550, 0.12, "sine", 200, 0.11);
+      }
+    } else {
+      // 타 기체 기존 일제사격 유지
+      if (this.missileTimer >= baseInterval) {
+        this.missileTimer = 0;
+        this.missileFlashTime = performance.now() / 1000;
+        const dmg = this.getMissileDamage();
+        for (let b = 0; b < burstCount; b++) {
+          setTimeout(() => {
+            if (!player || !player.isAlive || gameState !== 1) return;
+            homingMissiles.push(new HomingMissile(this.x - 24, this.y - 6, -1.8, -7, dmg, "LEFT"));
+            homingMissiles.push(new HomingMissile(this.x + 24, this.y - 6, 1.8, -7, dmg, "RIGHT"));
+            playTone(550, 0.12, "sine", 200, 0.11);
+          }, b * 150);
+        }
       }
     }
 
@@ -2570,16 +2604,16 @@ function applyChosenSkill(code, customDuration=null) {
   let colorStr = "#00f5ff";
 
   if (code === "POWER_UP") {
-    player.powerStat++;
-    titleStr = "POWER UP +1";
+    player.powerStat += 5;
+    titleStr = "POWER UP +5";
     colorStr = "#ff0080";
   } else if (code === "MISSILE_UP") {
-    player.missileStat++;
-    titleStr = "MISSILE UP +1";
+    player.missileStat += 5;
+    titleStr = "MISSILE UP +5";
     colorStr = "#00f5ff";
   } else if (code === "FIRE_RATE") {
-    player.fireRateStat++;
-    titleStr = "RATE UP +1";
+    player.fireRateStat += 5;
+    titleStr = "RATE UP +5";
     colorStr = "#ffe600";
   } else if (code === "CLONE_SHIP") {
     player.clonePlaneTimer = customDuration || 30.0;
@@ -3366,7 +3400,14 @@ function safeGameLoop(now) {
 
       const gw = 130, gh = 16, gx = LOGICAL_WIDTH - gw - 20, gy = LOGICAL_HEIGHT - 35;
       ctx.save();
-      ctx.strokeStyle = "#00f5ff";
+
+      // 외곽 2중 네온 글로우
+      ctx.strokeStyle = "rgba(0, 245, 255, 0.35)";
+      ctx.lineWidth = 4;
+      drawRoundRect(ctx, gx - 1, gy - 1, gw + 2, gh + 2, 9);
+      ctx.stroke();
+
+      ctx.strokeStyle = (gPct >= 0.85) ? (Math.floor(curTime * 15) % 2 === 0 ? "#ffffff" : "#00f5ff") : "#00f5ff";
       ctx.lineWidth = 1.5;
       drawRoundRect(ctx, gx, gy, gw, gh, 8);
       ctx.stroke();
@@ -3379,12 +3420,28 @@ function safeGameLoop(now) {
         ctx.fillStyle = "#00f5ff";
         drawRoundRect(ctx, gx, gy, gw * gPct, gh, 8);
         ctx.fill();
+
+        // 85% 이상일 때 상향 기포/버블 이펙트
+        if (gPct >= 0.85) {
+          ctx.save();
+          ctx.beginPath();
+          drawRoundRect(ctx, gx, gy, gw * gPct, gh, 8);
+          ctx.clip();
+          for (let b = 0; b < 6; b++) {
+            const bx = gx + ((curTime * (40 + b * 15) + b * 22) % (gw * gPct));
+            const by = gy + gh - ((curTime * 30 + b * 7) % gh);
+            const br = 1.5 + (b % 3);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+            ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.restore();
+        }
       }
 
       ctx.textAlign = "left";
-      ctx.fillStyle = "#00f5ff";
+      ctx.fillStyle = (gPct >= 0.85 && Math.floor(curTime * 10) % 2 === 0) ? "#ffffff" : "#00f5ff";
       ctx.font = `bold 12px ${FONT_FAMILY}`;
-      ctx.fillText("SKILL GAUGE", gx, gy - 6);
+      ctx.fillText(gPct >= 0.85 ? "★ SKILL READY ★" : "SKILL GAUGE", gx, gy - 6);
       ctx.restore();
 
     } else if (gameState === 2) {
@@ -3636,9 +3693,9 @@ function safeGameLoop(now) {
       const row2Y = 494 + 66 + slotToSkillGap;
 
       const row1Cards = [
-        { code: "POWER_UP", title: "POWER +1", desc: "INSTANT", col: "#ff0080", x: 35, y: 494, w: 115, h: 66 },
-        { code: "MISSILE_UP", title: "MISSILE +1", desc: "INSTANT", col: "#00f5ff", x: 167, y: 494, w: 115, h: 66 },
-        { code: "FIRE_RATE", title: "RATE +1", desc: "INSTANT", col: "#ffe600", x: 300, y: 494, w: 115, h: 66 }
+        { code: "POWER_UP", title: "POWER +5", desc: "INSTANT", col: "#ff0080", x: 35, y: 494, w: 115, h: 66 },
+        { code: "MISSILE_UP", title: "MISSILE +5", desc: "INSTANT", col: "#00f5ff", x: 167, y: 494, w: 115, h: 66 },
+        { code: "FIRE_RATE", title: "RATE +5", desc: "INSTANT", col: "#ffe600", x: 300, y: 494, w: 115, h: 66 }
       ];
 
       const row2Cards = [
