@@ -32,7 +32,7 @@ const nameInput = document.getElementById("name-input");
 
 const LOGICAL_WIDTH = 450;
 const LOGICAL_HEIGHT = 800;
-const VERSION_STR = "v20261011.001";
+const VERSION_STR = "v20261011.003";
 const FIREBASE_URL = "https://flywm-d0b39-default-rtdb.asia-southeast1.firebasedatabase.app/leaderboard.json";
 const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Malgun Gothic', sans-serif";
 
@@ -3361,28 +3361,22 @@ function safeGameLoop(now) {
       ctx.restore();
 
 } else if (gameState === 2) {
+      // 3. 상단에 스킬별 레벨창 높이(48px)의 절반인 24px만큼 빈 공간 추가
       ctx.textAlign = "center";
       ctx.fillStyle = "#00f5ff";
       ctx.font = `bold 16px ${FONT_FAMILY}`;
-      ctx.fillText("PILOT SKILL STATUS", LOGICAL_WIDTH / 2, 24);
+      ctx.fillText("PILOT SKILL STATUS", LOGICAL_WIDTH / 2, 48);
 
-      // 1. 비행기 검토창: 높이 3배(210px) 확장, 좌측 비행기 확대 & 우측 업그레이드 모듈 HUD 분석 UI
-      const inspectBox = { x: 35, y: 32, w: 380, h: 210 };
+      // 비행기 검토창 Y좌표도 24px 아래로 배치 (Y: 56, H: 210) - 네온 효과 완전 삭제
+      const inspectBox = { x: 35, y: 56, w: 380, h: 210 };
       ctx.save();
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = "transparent";
       ctx.fillStyle = "rgba(6, 12, 28, 0.94)";
       drawRoundRect(ctx, inspectBox.x, inspectBox.y, inspectBox.w, inspectBox.h, 10);
       ctx.fill();
       ctx.strokeStyle = "rgba(0, 245, 255, 0.7)";
       ctx.lineWidth = 1.8;
-      ctx.stroke();
-
-      // 전역 스캔 라인 애니메이션
-      const scanY = inspectBox.y + ((curTime * 45) % inspectBox.h);
-      ctx.strokeStyle = "rgba(0, 245, 255, 0.25)";
-      ctx.lineWidth = 2.0;
-      ctx.beginPath();
-      ctx.moveTo(inspectBox.x + 4, scanY);
-      ctx.lineTo(inspectBox.x + inspectBox.w - 4, scanY);
       ctx.stroke();
 
       // 헤더 상태 텍스트
@@ -3391,7 +3385,7 @@ function safeGameLoop(now) {
       ctx.font = `bold 10px ${FONT_FAMILY}`;
       ctx.fillText("SYSTEM DIAGNOSTIC // ACTIVE MODULE ANALYSIS", inspectBox.x + 14, inspectBox.y + 18);
 
-      // 좌측 비행기 크게 배치 (중심 X: 115, Y: 125, Scale: 1.35)
+      // 좌측 비행기 크게 배치 (중심 X: 120, Y: 135, Scale: 1.35)
       const shipCenterX = inspectBox.x + 85;
       const shipCenterY = inspectBox.y + 115;
       ctx.save();
@@ -3403,29 +3397,55 @@ function safeGameLoop(now) {
       drawVectorPlayer(ctx, player ? player.pType : 0, shipCol, 1.35, 0, false);
       ctx.restore();
 
-      // 좌측 비행기 부위 강조 조준선 (파워, 미사일, 연사 엔진)
+      // 1. 위에서 아래로 내려오는 스캔 라인: 비행기 폭(약 76px)의 10%인 8px 폭으로 비행기 상하 범위에서만 이동
+      const planeScanY = (shipCenterY - 45) + ((curTime * 50) % 90);
+      const scanBeamW = 8;
+      ctx.save();
+      const sGrad = ctx.createLinearGradient(shipCenterX - scanBeamW / 2, 0, shipCenterX + scanBeamW / 2, 0);
+      sGrad.addColorStop(0, "rgba(0, 245, 255, 0)");
+      sGrad.addColorStop(0.5, "rgba(0, 245, 255, 0.9)");
+      sGrad.addColorStop(1, "rgba(0, 245, 255, 0)");
+      ctx.fillStyle = sGrad;
+      ctx.fillRect(shipCenterX - scanBeamW / 2, planeScanY, scanBeamW, 2);
+      ctx.restore();
+
+      // 1. 비행기 강조 부위 식별성 강화 (더 굵고 또렷한 조준선 및 십자선 마커 - 네온 효과 삭제)
       const pPulse = Math.sin(curTime * 8) * 3 + 12;
-      ctx.strokeStyle = "#ff0080";
-      ctx.lineWidth = 1.8;
+      ctx.save();
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = "transparent";
+      ctx.strokeStyle = "#ff007f";
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
       ctx.arc(shipCenterX, shipCenterY - 8, pPulse, 0, Math.PI * 2);
       ctx.stroke();
 
-      const mPulse = Math.sin(curTime * 10) * 2 + 7;
+      const mPulse = Math.sin(curTime * 10) * 2 + 8;
       ctx.strokeStyle = "#00f5ff";
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(shipCenterX - 35 - mPulse / 2, shipCenterY + 5 - mPulse / 2, mPulse, mPulse);
-      ctx.strokeRect(shipCenterX + 35 - mPulse / 2, shipCenterY + 5 - mPulse / 2, mPulse, mPulse);
+      ctx.lineWidth = 2.0;
+      [-35, 35].forEach(mx => {
+        const cx = shipCenterX + mx;
+        const cy = shipCenterY + 5;
+        ctx.strokeRect(cx - mPulse / 2, cy - mPulse / 2, mPulse, mPulse);
+        ctx.beginPath();
+        ctx.moveTo(cx - mPulse, cy); ctx.lineTo(cx + mPulse, cy);
+        ctx.moveTo(cx, cy - mPulse); ctx.lineTo(cx, cy + mPulse);
+        ctx.stroke();
+      });
 
       ctx.fillStyle = "#ffe600";
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.0;
       ctx.beginPath();
-      ctx.moveTo(shipCenterX - 6, shipCenterY + 30);
-      ctx.lineTo(shipCenterX + 6, shipCenterY + 30);
-      ctx.lineTo(shipCenterX, shipCenterY + 40);
+      ctx.moveTo(shipCenterX - 7, shipCenterY + 28);
+      ctx.lineTo(shipCenterX + 7, shipCenterY + 28);
+      ctx.lineTo(shipCenterX, shipCenterY + 42);
       ctx.closePath();
       ctx.fill();
+      ctx.stroke();
+      ctx.restore();
 
-      // 우측 업그레이드 대상 3종 모듈 HUD 분석 패널
+      // 1. 오른쪽 3개 창: 외곽 네온 효과 완전 삭제, 외곽선 및 문자 투명도 30% 적용
       const rightX = inspectBox.x + 185;
       const modules = [
         { label: "CORE CANNON", lv: player ? Math.round(player.powerStat) : 1, col: "#ff0080", y: inspectBox.y + 36, max: 20 },
@@ -3434,15 +3454,22 @@ function safeGameLoop(now) {
       ];
 
       modules.forEach(m => {
-        // 모듈 미니 박스
+        ctx.save();
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = "transparent";
+
+        // 배경 박스
         ctx.fillStyle = "rgba(12, 20, 42, 0.85)";
         drawRoundRect(ctx, rightX, m.y, 180, 48, 6);
         ctx.fill();
+
+        // 외곽선 투명도 30% 적용
+        ctx.globalAlpha = 0.30;
         ctx.strokeStyle = m.col;
         ctx.lineWidth = 1.2;
         ctx.stroke();
 
-        // 모듈 미니 아이콘 그래픽
+        // 모듈 미니 아이콘 그래픽 (투명도 30%)
         ctx.save();
         ctx.translate(rightX + 18, m.y + 24);
         ctx.fillStyle = m.col;
@@ -3457,7 +3484,7 @@ function safeGameLoop(now) {
         }
         ctx.restore();
 
-        // 모듈 이름 및 레벨 수치
+        // 텍스트 투명도 30% 적용
         ctx.textAlign = "left";
         ctx.fillStyle = "#e2e8f0";
         ctx.font = `bold 10px ${FONT_FAMILY}`;
@@ -3468,7 +3495,7 @@ function safeGameLoop(now) {
         ctx.font = `bold 12px ${FONT_FAMILY}`;
         ctx.fillText(`Lv.${m.lv}`, rightX + 170, m.y + 18);
 
-        // 분석 진행 게이지 바
+        // 진행 바
         const barW = 132;
         const barPct = Math.min(1.0, m.lv / m.max);
         ctx.fillStyle = "#1e293b";
@@ -3482,19 +3509,24 @@ function safeGameLoop(now) {
         ctx.fillStyle = "rgba(148, 163, 184, 0.75)";
         ctx.font = `9px ${FONT_FAMILY}`;
         ctx.fillText("READY FOR UPGRADE", rightX + 38, m.y + 42);
+        ctx.restore();
       });
 
       ctx.restore();
 
-      // 확장된 검토창 높이에 맞춰 하단 스탯 박스 Y좌표 조정 (Y: 250)
+      // 스탯 박스 3개 (Y: 274, H: 48) - 네온 효과 완전 삭제
       const statBoxes = [
-        { title: "POWER", lv: player ? Math.round(player.powerStat) : 1, col: "#ff0080", x: 35, y: 250, w: 115, h: 48 },
-        { title: "MISSILE", lv: player ? Math.round(player.missileStat) : 1, col: "#00f5ff", x: 167, y: 250, w: 115, h: 48 },
-        { title: "RATE", lv: player ? Math.round(player.fireRateStat) : 1, col: "#ffe600", x: 300, y: 250, w: 115, h: 48 }
-      ];      const isZooming = (statZoomIndex >= 0 && (curTime - statZoomStartTime < 0.3));
+        { title: "POWER", lv: player ? Math.round(player.powerStat) : 1, col: "#ff0080", x: 35, y: 274, w: 115, h: 48 },
+        { title: "MISSILE", lv: player ? Math.round(player.missileStat) : 1, col: "#00f5ff", x: 167, y: 274, w: 115, h: 48 },
+        { title: "RATE", lv: player ? Math.round(player.fireRateStat) : 1, col: "#ffe600", x: 300, y: 274, w: 115, h: 48 }
+      ];
+
+      const isZooming = (statZoomIndex >= 0 && (curTime - statZoomStartTime < 0.3));
 
       statBoxes.forEach((sb, idx) => {
         ctx.save();
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = "transparent";
         ctx.fillStyle = "rgba(10, 16, 35, 0.85)";
         drawRoundRect(ctx, sb.x, sb.y, sb.w, sb.h, 8);
         ctx.fill();
@@ -3519,15 +3551,124 @@ function safeGameLoop(now) {
         ctx.restore();
       });
 
-      // 슬롯머신 윗쪽 문구 (Y: 318)
+      // 2. 스킬별 레벨창 아래와 "SKILLS & SPECIAL OPTIONS" 사이 공간을 레벨창 높이(48px)만큼 확보 (Y: 274 + 48 + 48 = 370)
       ctx.textAlign = "center";
       ctx.fillStyle = "#00f5ff";
       ctx.font = `bold 16px ${FONT_FAMILY}`;
-      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 318);
+      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 370);
 
-      // 슬롯머신 창 (Y: 332, H: 95)
-      const btnMult = { x: 35, y: 332, w: PERIMETER_W, h: 95 };
+      // 슬롯머신 창 위치 (Y: 384, H: 85)
+      const btnMult = { x: 35, y: 384, w: PERIMETER_W, h: 85 };
       if (curTime - lastMultRollTime >= 0.048) {
+        lastMultRollTime = curTime;
+        currentMultIndex = (currentMultIndex + 1) % shuffledMultiplierPool.length;
+      }
+      const currentMultOption = shuffledMultiplierPool[currentMultIndex];
+
+      ctx.save();
+      ctx.fillStyle = "rgba(20, 26, 52, 0.95)";
+      drawRoundRect(ctx, btnMult.x, btnMult.y, btnMult.w, btnMult.h, 12);
+      ctx.fill();
+      ctx.strokeStyle = "#ffd700";
+      ctx.lineWidth = 2.0;
+      ctx.stroke();
+
+      ORBIT_STARS.forEach((st) => {
+        st.dist += st.speed * st.dir * dt;
+        const pt = getPerimeterPoint(btnMult.x, btnMult.y, st.dist);
+        const rotAng = (curTime * ((Math.PI * 2) / st.rotDuration)) * st.dir;
+
+        ctx.save();
+        ctx.translate(pt.x, pt.y);
+        ctx.rotate(rotAng);
+        ctx.fillStyle = st.color;
+        drawStarShape(ctx, 0, 0, 5, st.baseSize, st.baseSize * 0.45);
+        ctx.fill();
+        ctx.restore();
+      });
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffd700";
+      ctx.font = `bold 11px ${FONT_FAMILY}`;
+      ctx.fillText("★ [ RANDOM CHANCE : UP TO 3X MULTIPLIER ] ★", btnMult.x + btnMult.w / 2, btnMult.y + 22);
+      ctx.fillStyle = currentMultOption.col;
+      ctx.font = `bold 22px ${FONT_FAMILY}`;
+      ctx.fillText(currentMultOption.label, btnMult.x + btnMult.w / 2, btnMult.y + 52);
+      ctx.fillStyle = "#a5c0e0";
+      ctx.font = `11px ${FONT_FAMILY}`;
+      ctx.fillText("x1 (50%) / x2 (30%) / x3 (20%) CHANCE", btnMult.x + btnMult.w / 2, btnMult.y + 75);
+      ctx.restore();
+
+      // 하단 6개 카드 배치 (Y: 480, Y: 554)
+      const row1Cards = [
+        { code: "POWER_UP", title: "POWER +1", desc: "INSTANT", col: "#ff0080", x: 35, y: 480, w: 115, h: 66 },
+        { code: "MISSILE_UP", title: "MISSILE +1", desc: "INSTANT", col: "#00f5ff", x: 167, y: 480, w: 115, h: 66 },
+        { code: "FIRE_RATE", title: "RATE +1", desc: "INSTANT", col: "#ffe600", x: 300, y: 480, w: 115, h: 66 }
+      ];
+
+      const row2Cards = [
+        { code: "SHIELD", title: "SHIELD", desc: "1~30s", col: "#32ff78", x: 35, y: 554, w: 115, h: 66, active: player && player.shieldRemain > 0 },
+        { code: "LASER_WEAPON", title: "LASER", desc: "1~30s", col: "#00f5ff", x: 167, y: 554, w: 115, h: 66, active: player && player.laserWeaponTimer > 0 },
+        { code: "CLONE_SHIP", title: "TWIN", desc: "1~30s", col: "#78a0ff", x: 300, y: 554, w: 115, h: 66, active: player && player.clonePlaneTimer > 0 }
+      ];
+
+      const isRecFlash = Math.floor(curTime / 0.10) % 2 === 0;
+
+      const allPickCards = [...row1Cards, ...row2Cards];
+      allPickCards.forEach(c => {
+        ctx.save();
+        if (c.active) ctx.globalAlpha = 0.50;
+
+        ctx.fillStyle = "rgba(10, 16, 35, 0.85)";
+        drawRoundRect(ctx, c.x, c.y, c.w, c.h, 10);
+        ctx.fill();
+
+        const isRec = (c.code === recommendedSkillCode);
+        if (isRec && isRecFlash && !c.active) {
+          ctx.shadowColor = "#ffffff";
+          ctx.shadowBlur = 12;
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 2.5;
+        } else {
+          ctx.strokeStyle = c.col;
+          ctx.lineWidth = 1.8;
+        }
+        ctx.stroke();
+
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `bold 13px ${FONT_FAMILY}`;
+        ctx.fillText(c.title, c.x + c.w / 2, c.y + 28);
+        ctx.fillStyle = c.col;
+        ctx.font = `bold 11px ${FONT_FAMILY}`;
+        ctx.fillText(c.desc, c.x + c.w / 2, c.y + 48);
+
+        // 추천 스킬 외곽 라인 하단에 걸치게 영문 표시
+        if (isRec && !c.active) {
+          ctx.save();
+          ctx.fillStyle = "rgba(10, 16, 35, 0.95)";
+          drawRoundRect(ctx, c.x + 8, c.y + c.h - 8, c.w - 16, 16, 4);
+          ctx.fill();
+          ctx.strokeStyle = "#00f5ff";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          ctx.fillStyle = "#00f5ff";
+          ctx.font = `bold 9px ${FONT_FAMILY}`;
+          ctx.fillText("RECOMMENDED", c.x + c.w / 2, c.y + c.h + 4);
+          ctx.restore();
+        }
+
+        if (c.active) {
+          ctx.globalAlpha = 1.0;
+          ctx.fillStyle = "#ff2244";
+          ctx.font = `bold 14px ${FONT_FAMILY}`;
+          ctx.shadowColor = "#ff0000";
+          ctx.shadowBlur = 6;
+          ctx.fillText("[SOLD OUT]", c.x + c.w / 2, c.y + 38);
+        }
+        ctx.restore();
+      });      if (curTime - lastMultRollTime >= 0.048) {
         lastMultRollTime = curTime;
         currentMultIndex = (currentMultIndex + 1) % shuffledMultiplierPool.length;
       }
