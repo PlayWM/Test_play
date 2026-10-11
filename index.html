@@ -143,7 +143,8 @@ function fetchTop10() {
           top10List = items.slice(0, 10).map(v => ({
             name: sanitizeText(v.name),
             score: Math.floor(Number(v.score) || 0),
-            country: sanitizeText(v.country) || "Global"
+            country: sanitizeText(v.country) || "Global",
+            ship: (v.ship === "Legend" || v.pType === 4) ? "Legend" : "Normal"
           }));
         }
       }).catch(() => {});
@@ -157,6 +158,8 @@ function uploadScore(name, finalScore) {
   const durationSec = Math.max(1, (performance.now() - sessionStartTime) / 1000);
   if (finalScore < 0 || finalScore > durationSec * 60 + 500) return;
 
+  const isLegend = Boolean(player && (player.pType === 4 || player.name === "Legend"));
+
   try {
     fetch(FIREBASE_URL, {
       method: "POST",
@@ -165,6 +168,7 @@ function uploadScore(name, finalScore) {
         name: cleanName,
         score: Math.floor(finalScore),
         country: sanitizeText(userCountry),
+        ship: isLegend ? "Legend" : "Normal",
         token: sessionSecurityKey,
         time: Date.now() / 1000
       })
@@ -1034,8 +1038,8 @@ class MissileShadow {
   constructor(x, y, radius) {
     this.x = x; this.y = y;
     this.radius = radius * 0.5;
-    this.life = 0.3;
-    this.totalLife = 0.3;
+    this.life = 0.45;
+    this.totalLife = 0.45;
   }
   update(dt) { this.life -= dt; }
   draw() {
@@ -1063,7 +1067,7 @@ class HomingMissile {
     this.shadowTimer += dt;
     if (this.shadowTimer >= 0.04) {
       this.shadowTimer = 0;
-      if (missileShadows.length < 40) {
+      if (missileShadows.length < 60) {
         missileShadows.push(new MissileShadow(this.x, this.y, this.radius));
       }
     }
@@ -2980,7 +2984,8 @@ function safeGameLoop(now) {
           ctx.fillStyle = idx === 0 ? "#ffe600" : (idx < 3 ? "#00f5ff" : "#ffffff");
           ctx.fillText(`${idx + 1}. [${item.country}] ${item.name}`, 44, rowY);
           ctx.textAlign = "right";
-          ctx.fillText(`${item.score} PTS`, LOGICAL_WIDTH - 44, rowY);
+          const legendPrefix = (item.ship === "Legend") ? "[LEGEND SHIP] " : "";
+          ctx.fillText(`${legendPrefix}${item.score} PTS`, LOGICAL_WIDTH - 44, rowY);
         }
       }
       ctx.restore();
