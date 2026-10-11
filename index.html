@@ -78,18 +78,26 @@ function drawStarShape(c, cx, cy, spikes, outerRadius, innerRadius) {
 }
 
 let nebulaOffsetTime = 0;
+// 배경 정적 그라데이션 1회 생성 및 캐싱
+let cachedBgGrad = null;
+function getCachedBgGrad(c) {
+  if (!cachedBgGrad) {
+    cachedBgGrad = c.createLinearGradient(0, 0, 0, LOGICAL_HEIGHT);
+    cachedBgGrad.addColorStop(0, "#03020c");
+    cachedBgGrad.addColorStop(0.5, "#060718");
+    cachedBgGrad.addColorStop(1, "#02030d");
+  }
+  return cachedBgGrad;
+}
+
 function drawDynamicDeepSpaceBackground(c, dt) {
   nebulaOffsetTime += dt * 3.0;
 
-  const bgGrad = c.createLinearGradient(0, 0, 0, LOGICAL_HEIGHT);
-  bgGrad.addColorStop(0, "#03020c");
-  bgGrad.addColorStop(0.5, "#060718");
-  bgGrad.addColorStop(1, "#02030d");
-  c.fillStyle = bgGrad;
+  c.fillStyle = getCachedBgGrad(c);
   c.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
-  const n1x = 100 + Math.sin(nebulaOffsetTime * 0.45) * 65;
-  const n1y = 210 + Math.cos(nebulaOffsetTime * 0.35) * 45;
+  const n1x = Math.round(100 + Math.sin(nebulaOffsetTime * 0.45) * 65);
+  const n1y = Math.round(210 + Math.cos(nebulaOffsetTime * 0.35) * 45);
   const neb1 = c.createRadialGradient(n1x, n1y, 15, n1x, n1y, 225);
   neb1.addColorStop(0, "rgba(195, 220, 255, 0.22)");
   neb1.addColorStop(0.45, "rgba(105, 50, 185, 0.14)");
@@ -97,8 +105,8 @@ function drawDynamicDeepSpaceBackground(c, dt) {
   c.fillStyle = neb1;
   c.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
-  const n2x = 330 + Math.cos(nebulaOffsetTime * 0.4) * 60;
-  const n2y = 620 + Math.sin(nebulaOffsetTime * 0.5) * 55;
+  const n2x = Math.round(330 + Math.cos(nebulaOffsetTime * 0.4) * 60);
+  const n2y = Math.round(620 + Math.sin(nebulaOffsetTime * 0.5) * 55);
   const neb2 = c.createRadialGradient(n2x, n2y, 20, n2x, n2y, 245);
   neb2.addColorStop(0, "rgba(215, 240, 255, 0.18)");
   neb2.addColorStop(0.5, "rgba(0, 195, 245, 0.12)");
@@ -256,10 +264,15 @@ function playMeteorWarningSound() {
   } catch(e){}
 }
 
+let lastExplosionSoundTime = 0;
 function playExplosionSound() {
   if (!audioCtx || !isPageVisible || audioCtx.state !== "running") return;
+  const now = audioCtx.currentTime;
+  // 60ms 이내에 연속 호출 시 오디오 버퍼 생성 차단 (동시 폭발 사운드 크래시 방지)
+  if (now - lastExplosionSoundTime < 0.06) return;
+  lastExplosionSoundTime = now;
+
   try {
-    const now = audioCtx.currentTime;
     const dur = 0.22;
     const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * dur), audioCtx.sampleRate);
     const data = buf.getChannelData(0);
@@ -463,11 +476,19 @@ function drawVectorPlayer(c, type, color, scale = 1.0, flameHeight = 0, isMissil
 
     const startY = ty + 4;
     const endY = startY + flH;
-    const fgOut = c.createLinearGradient(tx, startY, tx, endY + 4);
-    fgOut.addColorStop(0, "rgba(255, 255, 255, 0.9)");
-    fgOut.addColorStop(0.2, color);
-    fgOut.addColorStop(0.7, "rgba(0, 150, 255, 0.3)");
-    fgOut.addColorStop(1, "rgba(0,0,0,0)");
+
+    // Gradient 캐시 팩토리 (매 프레임 생성 방지)
+    if (!window.thrusterGradCache) window.thrusterGradCache = {};
+    const cacheKeyOut = `${color}_${Math.round(flH)}`;
+    let fgOut = window.thrusterGradCache[cacheKeyOut];
+    if (!fgOut) {
+      fgOut = c.createLinearGradient(0, startY, 0, endY + 4);
+      fgOut.addColorStop(0, "rgba(255, 255, 255, 0.9)");
+      fgOut.addColorStop(0.2, color);
+      fgOut.addColorStop(0.7, "rgba(0, 150, 255, 0.3)");
+      fgOut.addColorStop(1, "rgba(0,0,0,0)");
+      window.thrusterGradCache[cacheKeyOut] = fgOut;
+    }
     c.fillStyle = fgOut;
     c.beginPath();
     c.moveTo(tx - tw/2, startY);
@@ -476,10 +497,17 @@ function drawVectorPlayer(c, type, color, scale = 1.0, flameHeight = 0, isMissil
     c.closePath();
     c.fill();
 
-    const fgCore = c.createLinearGradient(tx, startY, tx, startY + flH * 0.6);
-    fgCore.addColorStop(0, "#ffffff");
-    fgCore.addColorStop(0.4, (isHeavy || safeFlame > 0) ? "#ff0044" : "#00ffff");
-    fgCore.addColorStop(1, "rgba(255, 255, 255, 0)");
+    // 중심부 고열 코어 다중 Gradient 캐싱 (다채로운 효과 유지)
+    const isRedCore = (isHeavy || safeFlame > 0);
+    const cacheKeyCore = `${isRedCore ? "RED" : "CYAN"}_${Math.round(flH * 0.6)}`;
+    let fgCore = window.thrusterGradCache[cacheKeyCore];
+    if (!fgCore) {
+      fgCore = c.createLinearGradient(0, startY, 0, startY + flH * 0.6);
+      fgCore.addColorStop(0, "#ffffff");
+      fgCore.addColorStop(0.4, isRedCore ? "#ff0044" : "#00ffff");
+      fgCore.addColorStop(1, "rgba(255, 255, 255, 0)");
+      window.thrusterGradCache[cacheKeyCore] = fgCore;
+    }
     c.fillStyle = fgCore;
     c.beginPath();
     c.moveTo(tx - tw * 0.25, startY);
@@ -1069,9 +1097,12 @@ class Player {
       this.missileLaserTimer += dt;
       if (this.missileLaserTimer >= 0.5) {
         this.missileLaserTimer = 0;
-        // 미사일 대미지에 비례하여 레이저 화력 증가
-        const laserBaseDmg = Math.max(1.0, this.getMissileDamage() * 0.5);
-        stationaryLasers.push(new StationaryMissileLaser(this.x, this.y - 20, laserBaseDmg, this.missileStat));
+        const lDmg = Math.max(1.0, this.getMissileDamage() * 0.5);
+        stationaryLasers.push(new StationaryMissileLaser(this.x, this.y - 20, lDmg, this.missileStat));
+        // 분신 활성화 시 분신 위치(x + 42)에서도 보조 레이저 발사
+        if (this.clonePlaneTimer > 0) {
+          stationaryLasers.push(new StationaryMissileLaser(this.x + 42, this.y - 20, lDmg, this.missileStat));
+        }
         playTone(740, 0.15, "triangle", -200, 0.1);
       }
     }
@@ -1209,10 +1240,12 @@ class MissileShadow {
   }
   update(dt) { this.life -= dt; }
   draw() {
-    if (this.life <= 0) return;
+    if (this.life <= 0.02) return; // 잔상이 완전히 사라지기 직전 미리 컷오프하여 뭉침 방지
+    const alpha = (this.life / this.totalLife) * 0.65;
+    if (alpha < 0.05) return;
     ctx.save();
-    ctx.globalAlpha = (this.life / this.totalLife) * 0.65;
-    ctx.fillStyle = "#ff55bb"; // 보다 밝고 화사한 네온 마젠타 톤
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#ff55bb";
     ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
@@ -2152,47 +2185,69 @@ class Bullet {
   }
   update(dt) { this.x += this.vx * (dt * 60); this.y += this.vy * (dt * 60); }
   draw() {
-    ctx.save();
-    ctx.translate(this.x, this.y);
+    if (this.bulletType === "DEFAULT") {
+      // 1. 기본 탄환: save/restore 없이 절대 좌표에 즉시 렌더링
+      ctx.fillStyle = "#ffe600";
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
 
-    if (this.bulletType === "LEGEND") {
+    } else if (this.bulletType === "TWIN") {
+      // 2. 트윈 탄환: scale 변형 대신 ellipse()를 사용해 컨텍스트 전환 오버헤드 0으로 제거
+      ctx.fillStyle = "#00ff66";
+      ctx.beginPath();
+      ctx.ellipse(this.x, this.y, 3.15, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+    } else if (this.bulletType === "POWER") {
+      // 3. 파워 탄환: 사전 캐싱된 Gradient를 사용하며 절대 좌표로 직접 드로잉
+      if (!window.cachedPowerBulletGrads) window.cachedPowerBulletGrads = new Map();
+      let grad = window.cachedPowerBulletGrads.get(this.radius);
+      if (!grad) {
+        grad = ctx.createRadialGradient(0, 0, 1, 0, 0, this.radius);
+        grad.addColorStop(0, "#ffffff");
+        grad.addColorStop(0.3, "#ffe600");
+        grad.addColorStop(1, "#ff2244");
+        window.cachedPowerBulletGrads.set(this.radius, grad);
+      }
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+    } else if (this.bulletType === "BLACK_HOLE") {
+      // 4. 블랙홀 탄환: 절대 좌표에 원 및 외곽선 스트로크 직접 드로잉
+      ctx.fillStyle = "#1e0033";
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#bf00ff";
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+
+    } else if (this.bulletType === "LEGEND") {
+      // 5. 레전드 화살촉 폴리곤 탄환
+      ctx.save();
+      ctx.translate(this.x, this.y);
       ctx.fillStyle = "#ffd700";
       ctx.beginPath();
       ctx.moveTo(0, -14); ctx.lineTo(5, 6); ctx.lineTo(0, 3); ctx.lineTo(-5, 6);
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath(); ctx.arc(0, -4, 2.5, 0, Math.PI * 2); ctx.fill();
-
-    } else if (this.bulletType === "POWER") {
-      const grad = ctx.createRadialGradient(0, 0, 1, 0, 0, this.radius);
-      grad.addColorStop(0, "#ffffff");
-      grad.addColorStop(0.3, "#ffe600");
-      grad.addColorStop(1, "#ff2244");
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.fill();
-
-    } else if (this.bulletType === "BLACK_HOLE") {
-      ctx.fillStyle = "#1e0033";
-      ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "#bf00ff"; ctx.lineWidth = 2.2; ctx.stroke();
-
-    } else if (this.bulletType === "TWIN") {
-      ctx.save();
-      ctx.fillStyle = "#00ff66";
-      ctx.beginPath();
-      ctx.scale(0.35, 1.0);
-      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.closePath();
       ctx.fill();
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.arc(0, -4, 2.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-    } else {
-      ctx.fillStyle = "#ffe600";
-      ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.fill();
     }
-    ctx.restore();
   }
 }
 
@@ -2740,13 +2795,15 @@ function applyChosenSkill(code, customDuration=null) {
     titleStr = "RATE UP +5";
     colorStr = "#ffe600";
   } else if (code === "CLONE_SHIP") {
-    player.clonePlaneTimer = customDuration || 30.0;
+    const addTime = customDuration || 30.0;
+    player.clonePlaneTimer = Math.min(30.0, player.clonePlaneTimer + addTime);
   } else if (code === "LASER_WEAPON") {
-    player.laserWeaponTimer = customDuration || 30.0;
+    const addTime = customDuration || 30.0;
+    player.laserWeaponTimer = Math.min(30.0, player.laserWeaponTimer + addTime);
     player.lastLaserTime = performance.now() / 1000;
   } else if (code === "SHIELD") {
-    const addedDuration = customDuration || 30.0;
-    player.shieldRemain = Math.min(30.0, player.shieldRemain + addedDuration);
+    const addTime = customDuration || 30.0;
+    player.shieldRemain = Math.min(30.0, player.shieldRemain + addTime);
   }
 
   if (code === "POWER_UP" || code === "MISSILE_UP" || code === "FIRE_RATE") {
@@ -2765,10 +2822,12 @@ function playChosenImmediateReturn() {
   if (player && player.isAlive) {
     player.x = preUpgradePlayerPos.x;
     player.y = preUpgradePlayerPos.y;
-    player.targetX = player.x;
-    player.targetY = player.y;
+    player.targetX = preUpgradePlayerPos.x;
+    player.targetY = preUpgradePlayerPos.y;
   }
-  setTimeout(() => { isTouchActive = false; }, 50);
+  // 복귀 직후 화면 터치 잔여 이벤트가 비행기를 강제로 끌어당기지 않도록 200ms 동안 차단
+  window.blockPointerUntil = performance.now() + 200;
+  setTimeout(() => { isTouchActive = false; }, 200);
   gameState = 1;
 }
 
@@ -2788,6 +2847,7 @@ function getCanvasCoords(clientX, clientY) {
 }
 
 function handlePointerDown(e) {
+  if (window.blockPointerUntil && performance.now() < window.blockPointerUntil) return;
   initAudio();
   isTouchActive = true;
   const coords = getCanvasCoords(e.clientX, e.clientY);
@@ -2880,6 +2940,7 @@ function handlePointerDown(e) {
 }
 
 function handlePointerMove(e) {
+  if (window.blockPointerUntil && performance.now() < window.blockPointerUntil) return;
   if (!isTouchActive || gameState !== 1 || !player || !player.isAlive || playerDeathCinematic.active) return;
   if (hedgehogLauncher.timeStopTimer > 0) return;
   const coords = getCanvasCoords(e.clientX, e.clientY);
@@ -3302,7 +3363,8 @@ function safeGameLoop(now) {
 
         for (let i = homingMissiles.length - 1; i >= 0; i--) {
           homingMissiles[i].update(dt, enemies);
-          if (homingMissiles[i].life <= 0 || homingMissiles[i].y <= -20 || homingMissiles[i].x <= -20 || homingMissiles[i].x >= LOGICAL_WIDTH + 20) {
+          // y >= LOGICAL_HEIGHT + 30 (하단 이탈) 추가하여 화면 밖 유령 미사일 즉시 정리
+          if (homingMissiles[i].life <= 0 || homingMissiles[i].y <= -20 || homingMissiles[i].y >= LOGICAL_HEIGHT + 30 || homingMissiles[i].x <= -20 || homingMissiles[i].x >= LOGICAL_WIDTH + 20) {
             homingMissiles.splice(i, 1);
           }
         }
@@ -3362,8 +3424,11 @@ function safeGameLoop(now) {
         if (!isFrozen && e.y >= 20 && !e.isDead && e.hp > 0 && !e.isBeingSucked) {
           for (let bi = bullets.length - 1; bi >= 0; bi--) {
             const b = bullets[bi];
-            const dSq = (b.x - e.x) * (b.x - e.x) + (b.y - e.y) * (b.y - e.y);
             const rSum = b.radius + e.radius;
+            // 1차 단순 거리 체크: 반경을 벗어나면 무거운 제곱 연산 즉시 건너뜀
+            if (Math.abs(b.x - e.x) > rSum || Math.abs(b.y - e.y) > rSum) continue;
+
+            const dSq = (b.x - e.x) * (b.x - e.x) + (b.y - e.y) * (b.y - e.y);
             if (dSq < rSum * rSum) {
               if (b.isBlackHoleTrigger) {
                 blackHoles.push(new BlackHole(b.x, b.y, 25));
@@ -3383,7 +3448,7 @@ function safeGameLoop(now) {
           const minDist = shieldDist + e.radius;
           if (curDistSq < minDist * minDist) {
             const pushAngle = Math.atan2(edy, edx);
-            e.x = player.x + Math.cos(pushAngle) * minDist;
+            e.x = Math.max(e.radius, Math.min(LOGICAL_WIDTH - e.radius, player.x + Math.cos(pushAngle) * minDist));
             e.y = player.y + Math.sin(pushAngle) * minDist;
             e.vx = Math.cos(pushAngle) * 5.0;
           }
@@ -3462,9 +3527,13 @@ function safeGameLoop(now) {
       for (let i = 0; i < suckingEntities.length; i++) suckingEntities[i].draw();
       for (let i = 0; i < bossMissiles.length; i++) bossMissiles[i].draw();
       for (let i = 0; i < bossDropItems.length; i++) bossDropItems[i].draw(curTime);
-      for (let i = 0; i < enemies.length; i++) {
+      for (let i = enemies.length - 1; i >= 0; i--) {
         const e = enemies[i];
-        if (!e.isDead && e.hp > 0 && !e.isBeingSucked) e.draw(curTime);
+        if (e.isDead || e.hp <= 0) {
+          enemies.splice(i, 1);
+          continue;
+        }
+        if (!e.isBeingSucked) e.draw(curTime);
       }
       for (let i = 0; i < blackHoles.length; i++) blackHoles[i].draw();
       if (currentBoss) currentBoss.draw(curTime);
@@ -3475,7 +3544,9 @@ function safeGameLoop(now) {
       for (let i = 0; i < rockDebrisList.length; i++) rockDebrisList[i].draw();
       for (let i = 0; i < explosions.length; i++) explosions[i].draw();
 
-      if (player && player.isAlive) player.draw(curTime);
+      if (player && player.isAlive && !playerDeathCinematic.active) {
+        player.draw(curTime);
+      }
 
       updateAndDrawPlayerCinematic(dt);
       drawHedgehogLauncher(ctx, curTime);
@@ -3590,15 +3661,6 @@ function safeGameLoop(now) {
 
       const shipCenterX = inspectBox.x + 85;
       const shipCenterY = inspectBox.y + 115;
-      ctx.save();
-      ctx.translate(shipCenterX, shipCenterY);
-      let shipCol = "#00f5ff";
-      if (player && (player.name === "Legend" || player.pType === 4)) shipCol = "#ffd700";
-      else if (player && player.pType === 1) shipCol = "#ff2244";
-      else if (player && player.pType === 2) shipCol = "#00ff66";
-      drawVectorPlayer(ctx, player ? player.pType : 0, shipCol, 1.35, 0, false);
-      ctx.restore();
-
       const cellSize = 12;
       const cols = 10;
       const rows = 13;
@@ -3607,6 +3669,7 @@ function safeGameLoop(now) {
       const gridLeft = Math.round(shipCenterX - planeGridW / 2);
       const gridTop = inspectBox.y + 36 + Math.round((160 - planeGridH) / 2);
 
+      // [레이어 1] 배경 바닥: 초록색 분석 모눈종이(그리드)
       ctx.save();
       ctx.strokeStyle = "rgba(0, 255, 102, 0.28)";
       ctx.lineWidth = 1.0;
@@ -3623,19 +3686,29 @@ function safeGameLoop(now) {
         ctx.lineTo(gridLeft + planeGridW, gy);
       }
       ctx.stroke();
-      ctx.restore();
 
+      // [레이어 2] 배경 스캔: 위아래로 움직이는 스캔 빔 (기체 뒤쪽 바닥에서 스캔)
       const planeScanY = gridTop + ((curTime * 50) % planeGridH);
-      const scanBeamW = 8;
-      ctx.save();
+      const scanBeamW = planeGridW - 4;
       const sGrad = ctx.createLinearGradient(shipCenterX - scanBeamW / 2, 0, shipCenterX + scanBeamW / 2, 0);
       sGrad.addColorStop(0, "rgba(0, 245, 255, 0)");
-      sGrad.addColorStop(0.5, "rgba(0, 245, 255, 0.9)");
+      sGrad.addColorStop(0.5, "rgba(0, 245, 255, 0.45)");
       sGrad.addColorStop(1, "rgba(0, 245, 255, 0)");
       ctx.fillStyle = sGrad;
       ctx.fillRect(shipCenterX - scanBeamW / 2, planeScanY, scanBeamW, 2);
       ctx.restore();
 
+      // [레이어 3] 본체: 스캔 그리드 위에 선명하게 기체 드로잉
+      ctx.save();
+      ctx.translate(shipCenterX, shipCenterY);
+      let shipCol = "#00f5ff";
+      if (player && (player.name === "Legend" || player.pType === 4)) shipCol = "#ffd700";
+      else if (player && player.pType === 1) shipCol = "#ff2244";
+      else if (player && player.pType === 2) shipCol = "#00ff66";
+      drawVectorPlayer(ctx, player ? player.pType : 0, shipCol, 1.35, 0, false);
+      ctx.restore();
+
+      // [레이어 4] 오버레이: 무기/엔진 분석 타깃 펄스 링 (최상단)
       ctx.save();
       ctx.globalAlpha = 0.70;
 
@@ -3841,20 +3914,9 @@ function safeGameLoop(now) {
         drawRoundRect(ctx, c.x, c.y, c.w, c.h, 10);
         ctx.fill();
 
-        const isRec = (c.code === recommendedSkillCode);
         if (isRec && !c.active) {
-          const hazeBaseAlpha = isRecFlash ? 0.35 : 0.18;
-          const dustColor = isRecFlash ? "255, 255, 255" : "0, 245, 255";
-          for (let layer = 3; layer >= 1; layer--) {
-            ctx.save();
-            ctx.strokeStyle = `rgba(${dustColor}, ${(hazeBaseAlpha / layer).toFixed(3)})`;
-            ctx.lineWidth = 2.5 + layer * 2.5;
-            drawRoundRect(ctx, c.x, c.y, c.w, c.h, 10);
-            ctx.stroke();
-            ctx.restore();
-          }
           ctx.strokeStyle = isRecFlash ? "#ffffff" : "#00f5ff";
-          ctx.lineWidth = 2.5;
+          ctx.lineWidth = isRecFlash ? 3.5 : 2.5;
         } else {
           ctx.strokeStyle = c.col;
           ctx.lineWidth = 1.8;
