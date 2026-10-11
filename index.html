@@ -2783,16 +2783,16 @@ function applyChosenSkill(code, customDuration=null) {
   let colorStr = "#00f5ff";
 
   if (code === "POWER_UP") {
-    player.powerStat += 5;
-    titleStr = "POWER UP +5";
+    player.powerStat += 1;
+    titleStr = "POWER UP +1";
     colorStr = "#ff0080";
   } else if (code === "MISSILE_UP") {
-    player.missileStat += 5;
-    titleStr = "MISSILE UP +5";
+    player.missileStat += 1;
+    titleStr = "MISSILE UP +1";
     colorStr = "#00f5ff";
   } else if (code === "FIRE_RATE") {
-    player.fireRateStat += 5;
-    titleStr = "RATE UP +5";
+    player.fireRateStat += 1;
+    titleStr = "RATE UP +1";
     colorStr = "#ffe600";
   } else if (code === "CLONE_SHIP") {
     const addTime = customDuration || 30.0;
@@ -3890,9 +3890,9 @@ function safeGameLoop(now) {
       const row2Y = 494 + 66 + slotToSkillGap;
 
       const row1Cards = [
-        { code: "POWER_UP", title: "POWER +5", desc: "INSTANT", col: "#ff0080", x: 35, y: 494, w: 115, h: 66 },
-        { code: "MISSILE_UP", title: "MISSILE +5", desc: "INSTANT", col: "#00f5ff", x: 167, y: 494, w: 115, h: 66 },
-        { code: "FIRE_RATE", title: "RATE +5", desc: "INSTANT", col: "#ffe600", x: 300, y: 494, w: 115, h: 66 }
+        { code: "POWER_UP", title: "POWER +1", desc: "INSTANT", col: "#ff0080", x: 35, y: 494, w: 115, h: 66 },
+        { code: "MISSILE_UP", title: "MISSILE +1", desc: "INSTANT", col: "#00f5ff", x: 167, y: 494, w: 115, h: 66 },
+        { code: "FIRE_RATE", title: "RATE +1", desc: "INSTANT", col: "#ffe600", x: 300, y: 494, w: 115, h: 66 }
       ];
 
       const row2Cards = [
@@ -3914,6 +3914,7 @@ function safeGameLoop(now) {
         drawRoundRect(ctx, c.x, c.y, c.w, c.h, 10);
         ctx.fill();
 
+        const isRec = (c.code === recommendedSkillCode);
         if (isRec && !c.active) {
           ctx.strokeStyle = isRecFlash ? "#ffffff" : "#00f5ff";
           ctx.lineWidth = isRecFlash ? 3.5 : 2.5;
