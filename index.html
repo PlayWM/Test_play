@@ -2149,17 +2149,16 @@ function safeKillEnemy(e, customColor="#ffe600") {
 function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   hitImpacts.push(new BulletHitImpactFX(e.x, e.y, bType));
 
-  if (e.isHeavy) {
-    e.shieldHits = (e.shieldHits || 0) + 1; // 레이저 1회 적중 시 1카운트 정밀 누적
+if (e.isHeavy) {
+    e.shieldHits = (e.shieldHits || 0) + 1; // 레이저 1회 적중 시 1카운트 누적
     explosions.push(new ExplosionFX(e.x, e.y, "#cbd5e1"));
     playTone(600, 0.05, "sawtooth", -100, 0.08);
-    if (e.shieldHits >= 10) {
+    // 8회 공격 시 파괴 (safeKillEnemy 내부에서 5점 획득 처리)
+    if (e.shieldHits >= 8) {
       safeKillEnemy(e, "#cbd5e1");
     }
     return;
-  }
-
-  if (e.hasShield) {
+  }  if (e.hasShield) {
     e.shieldHits++;
     e.freezeTimer = 0.2;
     e.vx = 0;
@@ -2650,31 +2649,42 @@ window.addEventListener("keyup", e => {
   keysPressed[e.code] = false;
 });
 
-// 4. 슬롯머신 외곽선 궤도 별 (1~3초 랜덤 자전, 오차 없는 둘레 이동)
+// 슬롯머신 외곽선 궤도 별 설정 (규격/크기 유지, 시계/반시계 랜덤 이동, 우하단 이탈 방지)
 const PERIMETER_W = 380;
 const PERIMETER_H = 105;
-const TOTAL_PERIMETER = (PERIMETER_W + PERIMETER_H) * 2;
+const TOTAL_PERIMETER = (PERIMETER_W + PERIMETER_H) * 2; // 970px
 const STAR_PALETTE = ["#ffd700", "#00f5ff", "#ff0080", "#32ff78", "#ff8c00", "#c832ff", "#ffffff", "#ff44aa", "#44ffff"];
 
 const ORBIT_STARS = Array.from({ length: 10 }, (_, i) => ({
   dist: Math.random() * TOTAL_PERIMETER,
-  baseSize: 4.5 + Math.random() * 4.0,
+  baseSize: 4.5 + Math.random() * 4.0, // 크기 유지
   speed: ((TOTAL_PERIMETER / 4.0) * (0.6 + Math.random() * 0.8)) * 0.5,
+  dir: Math.random() < 0.5 ? 1 : -1, // 시계방향(1) 또는 반시계방향(-1) 무작위 결정
   color: STAR_PALETTE[i % STAR_PALETTE.length],
-  rotDuration: 1.0 + Math.random() * 2.0 // 4. 1초~3초 랜덤 360도 자전
+  rotDuration: 1.0 + Math.random() * 2.0
 }));
 
+// 4변 경계선을 정확히 추적하는 외곽 라인 매핑 함수 (우측 하단 이탈 방지)
 function getPerimeterPoint(boxX, boxY, dist) {
   let d = ((dist % TOTAL_PERIMETER) + TOTAL_PERIMETER) % TOTAL_PERIMETER;
-  if (d < PERIMETER_W) return { x: boxX + d, y: boxY };
+  // 1) 상단 변: 왼쪽 -> 오른쪽
+  if (d <= PERIMETER_W) {
+    return { x: boxX + d, y: boxY };
+  }
   d -= PERIMETER_W;
-  if (d < PERIMETER_H) return { x: boxX + PERIMETER_W, y: boxY + d };
+  // 2) 우측 변: 위 -> 아래 (boxX + PERIMETER_W 라인 정확히 고정)
+  if (d <= PERIMETER_H) {
+    return { x: boxX + PERIMETER_W, y: boxY + d };
+  }
+  d -= PERIMETER_H;
+  // 3) 하단 변: 오른쪽 -> 왼쪽 (boxY + PERIMETER_H 라인 정확히 고정)
+  if (d <= PERIMETER_W) {
+    return { x: boxX + PERIMETER_W - d, y: boxY + PERIMETER_H };
+  }
   d -= PERIMETER_W;
-  if (d < PERIMETER_W) return { x: boxX + PERIMETER_W - d, y: boxY + PERIMETER_H };
-  d -= PERIMETER_W;
+  // 4) 좌측 변: 아래 -> 위 (boxX 라인 정확히 고정)
   return { x: boxX, y: boxY + PERIMETER_H - d };
 }
-
 function getWeightedMultiplierItem() {
   const types = [
     { type: "PWR", labelPrefix: "POWER", col: "#ff0080" },
@@ -3329,11 +3339,11 @@ function safeGameLoop(now) {
       ctx.lineWidth = 2.0;
       ctx.stroke();
 
-      // 4. 슬롯머신 외곽선 추적 별 (이탈 없는 클램핑 + 개별 360도 자전)
+      // 슬롯머신 외곽선 추적 별 (각 별의 방향(dir)에 따라 공전 및 자전)
       ORBIT_STARS.forEach((st) => {
-        st.dist += st.speed * dt;
+        st.dist += st.speed * st.dir * dt; // 시계/반시계 방향 이동
         const pt = getPerimeterPoint(btnMult.x, btnMult.y, st.dist);
-        const rotAng = (curTime * ((Math.PI * 2) / st.rotDuration));
+        const rotAng = (curTime * ((Math.PI * 2) / st.rotDuration)) * st.dir;
 
         ctx.save();
         ctx.translate(pt.x, pt.y);
