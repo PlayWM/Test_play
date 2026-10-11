@@ -148,12 +148,22 @@ function fetchTop10() {
         if (data) {
           const items = Object.values(data).filter(v => v && v.name && v.score !== undefined);
           items.sort((a, b) => b.score - a.score);
-          top10List = items.slice(0, 10).map(v => ({
-            name: sanitizeText(v.name),
-            score: Math.floor(Number(v.score) || 0),
-            country: sanitizeText(v.country) || "Global",
-            ship: (v.ship === "Legend" || v.pType === 4) ? "Legend" : "Normal"
-          }));
+          top10List = items.slice(0, 10).map(v => {
+            let shipName = "Random";
+            if (v.ship === "Legend" || v.pType === 4) shipName = "Legend";
+            else if (v.ship === "Power" || v.pType === 1) shipName = "Power";
+            else if (v.ship === "Speed" || v.ship === "Missile" || v.pType === 0) shipName = "Speed";
+            else if (v.ship === "Twin" || v.pType === 2) shipName = "Twin";
+            else if (v.ship === "Random") shipName = "Random";
+            else if (v.ship) shipName = sanitizeText(v.ship);
+
+            return {
+              name: sanitizeText(v.name),
+              score: Math.floor(Number(v.score) || 0),
+              country: sanitizeText(v.country) || "Global",
+              ship: `[${shipName}]`
+            };
+          });
         }
       }).catch(() => {});
   } catch(e){}
@@ -166,7 +176,14 @@ function uploadScore(name, finalScore) {
   const durationSec = Math.max(1, (performance.now() - sessionStartTime) / 1000);
   if (finalScore < 0 || finalScore > durationSec * 60 + 500) return;
 
-  const isLegend = Boolean(player && (player.pType === 4 || player.name === "Legend"));
+  let shipType = "Random";
+  if (player) {
+    if (player.pType === 4 || player.name === "Legend") shipType = "Legend";
+    else if (player.pType === 1 || player.name === "Power") shipType = "Power";
+    else if (player.pType === 0 || player.name === "Missile" || player.name === "Speed") shipType = "Speed";
+    else if (player.pType === 2 || player.name === "Twin") shipType = "Twin";
+    else shipType = "Random";
+  }
 
   try {
     fetch(FIREBASE_URL, {
@@ -176,7 +193,7 @@ function uploadScore(name, finalScore) {
         name: cleanName,
         score: Math.floor(finalScore),
         country: sanitizeText(userCountry),
-        ship: isLegend ? "Legend" : "Normal",
+        ship: shipType,
         token: sessionSecurityKey,
         time: Date.now() / 1000
       })
@@ -3235,8 +3252,8 @@ function safeGameLoop(now) {
           ctx.fillStyle = idx === 0 ? "#ffe600" : (idx < 3 ? "#00f5ff" : "#ffffff");
           ctx.fillText(`${idx + 1}. [${item.country}] ${item.name}`, 44, rowY);
           ctx.textAlign = "right";
-          const legendPrefix = (item.ship === "Legend") ? "[LEGEND SHIP] " : "";
-          ctx.fillText(`${legendPrefix}${item.score} PTS`, LOGICAL_WIDTH - 44, rowY);
+          const shipLabel = item.ship ? `${item.ship}                    ` : "";
+        ctx.fillText(`${shipLabel}${item.score} PTS`, LOGICAL_WIDTH - 44, rowY);
         }
       }
       ctx.restore();
