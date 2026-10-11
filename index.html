@@ -1069,7 +1069,9 @@ class Player {
       this.missileLaserTimer += dt;
       if (this.missileLaserTimer >= 0.5) {
         this.missileLaserTimer = 0;
-        stationaryLasers.push(new StationaryMissileLaser(this.x, this.y - 20, 1.0, this.missileStat));
+        // 미사일 대미지에 비례하여 레이저 화력 증가
+        const laserBaseDmg = Math.max(1.0, this.getMissileDamage() * 0.5);
+        stationaryLasers.push(new StationaryMissileLaser(this.x, this.y - 20, laserBaseDmg, this.missileStat));
         playTone(740, 0.15, "triangle", -200, 0.1);
       }
     }
@@ -2137,8 +2139,7 @@ function updateAndDrawPlayerCinematic(dt) {
 
   if (elapsed >= 0.4) {
     playerDeathCinematic.active = false;
-    setSelectScreenMode();
-    gameState = 0;
+    handleGameOver(); // 정상적으로 게임오버 창 및 랭킹 등록 호출
   }
 }
 
@@ -3284,9 +3285,9 @@ function safeGameLoop(now) {
           const rSum = player.radius + it.radius;
           if (dSq < rSum * rSum) {
             const itemType = it.getType(curTime);
-            if (itemType === "P") player.powerStat++;
-            else if (itemType === "M") player.missileStat++;
-            else if (itemType === "D") player.fireRateStat++;
+            if (itemType === "P") player.powerStat += 3;
+            else if (itemType === "M") player.missileStat += 3;
+            else if (itemType === "D") player.fireRateStat += 3;
             bossDropItems.splice(i, 1);
             playTone(784, 0.2, "triangle", 150, 0.12);
           }
@@ -3388,7 +3389,7 @@ function safeGameLoop(now) {
           }
         }
 
-        if (player && player.isAlive && e.y >= 20 && !e.isDead && e.hp > 0 && !e.isBeingSucked) {
+        if (!isFrozen && player && player.isAlive && e.y >= 20 && !e.isDead && e.hp > 0 && !e.isBeingSucked) {
           const dSq = (player.x - e.x) * (player.x - e.x) + (player.y - e.y) * (player.y - e.y);
           const rSum = player.radius + e.radius;
           if (dSq < rSum * rSum) {
