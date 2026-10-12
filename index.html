@@ -129,12 +129,17 @@ function calculateRecommendedSkill() {
   const p = player.powerStat || 1;
   const m = player.missileStat || 1;
   const r = player.fireRateStat || 1;
-  const time = inGameElapsedTime || 0;
 
-  if (time >= 60 && p <= Math.min(m, r) + 1) return "POWER_UP";
+  // [항목 6] 시작 레벨 5짜리 고유 스탯이 8렙이 될 때까지 우선 추천
+  if (player.pType === 0 && m < 8) return "MISSILE_UP";
+  if (player.pType === 1 && p < 8) return "POWER_UP";
+  if (player.pType === 2 && r < 8) return "FIRE_RATE";
+
+  // 8렙 이후: 현재 레벨 분석 기반 최적 스킬 추천 (가장 낮은 스탯 보완 및 진행시간 고려)
+  const time = inGameElapsedTime || 0;
+  if (time >= 90 && p <= Math.min(m, r)) return "POWER_UP";
   if (m <= p && m <= r) return "MISSILE_UP";
   if (r <= p && r <= m) return "FIRE_RATE";
-  if (p <= m && p <= r) return "POWER_UP";
   return "POWER_UP";
 }
 
@@ -243,6 +248,7 @@ window.addEventListener("pagehide", () => {
 });
 
 let top10List = [];
+let allLeaderboardList = []; // Firebase에 등록된 전체 랭킹 목록 저장
 function fetchTop10() {
   try {
     fetch(FIREBASE_URL)
@@ -251,8 +257,11 @@ function fetchTop10() {
         if (data) {
           const items = Object.values(data).filter(v => v && v.name && v.score !== undefined);
           items.sort((a, b) => b.score - a.score);
-          top10List = items.slice(0, 10).map(v => {
-            let shipName = "";
+          allLeaderboardList = items.map(v => ({
+            name: sanitizeText(v.name),
+            score: Math.floor(Number(v.score) || 0)
+          }));
+          top10List = items.slice(0, 10).map(v => {            let shipName = "";
             if (v.ship === "Legend" || v.pType === 4) shipName = "Legend";
             else if (v.ship === "Power" || v.pType === 1) shipName = "Power";
             else if (v.ship === "Missile" || v.ship === "Speed" || v.pType === 0) shipName = "Missile";
@@ -1173,8 +1182,8 @@ class Player {
     return Math.max(0.10, base * reduction);
   }
   getMissileDamage() {
-    const baseDmg = 3.0;
-    // 레벨당 파워 증가폭을 절반으로 하향 (기준값 3.0에서 레벨당 4%씩 단리 증가)
+    // [항목 5] 미사일형(Type 0) 1렙 파워 지금 대비 30% 감소 (3.0 -> 2.1)
+    const baseDmg = (this.pType === 0) ? 2.1 : 3.0;
     return baseDmg * (1.0 + Math.max(0, this.missileStat - 1) * 0.04);
   }
   getMissileInterval() {
@@ -1265,16 +1274,16 @@ class Player {
       const laserInterval = Math.max(0.08, 0.5 * Math.pow(0.98, Math.max(0, this.fireRateStat - 1)));
       if (this.missileLaserTimer >= laserInterval) {
         this.missileLaserTimer = 0;
-        const lDmg = Math.max(1.0, this.getMissileDamage() * 0.5);
+        // [항목 4] 1렙 파워 지금 대비 40% 감소 (0.5 -> 0.3)
+        const lDmg = Math.max(0.6, this.getMissileDamage() * 0.3);
 
-        // 분할된 좌우 머리 위치(x - 10, x + 10)에서 수직 0도로 2줄기 개별 발사
-        stationaryLasers.push(new StationaryMissileLaser(this.x - 10, this.y - 26, lDmg, this.missileStat, 0));
-        stationaryLasers.push(new StationaryMissileLaser(this.x + 10, this.y - 26, lDmg, this.missileStat, 0));
+        // [항목 3] 왼쪽 머리는 LEFT 타겟 전용, 오른쪽 머리는 RIGHT 타겟 전용 발사
+        stationaryLasers.push(new StationaryMissileLaser(this.x - 10, this.y - 26, lDmg, this.missileStat, 0, "LEFT"));
+        stationaryLasers.push(new StationaryMissileLaser(this.x + 10, this.y - 26, lDmg, this.missileStat, 0, "RIGHT"));
 
-        // 분신 활성화 시 분신 머리 위치에서도 수직 0도로 2줄기 발사
         if (this.clonePlaneTimer > 0) {
-          stationaryLasers.push(new StationaryMissileLaser(this.x + 42 - 10, this.y - 26, lDmg, this.missileStat, 0));
-          stationaryLasers.push(new StationaryMissileLaser(this.x + 42 + 10, this.y - 26, lDmg, this.missileStat, 0));
+          stationaryLasers.push(new StationaryMissileLaser(this.x + 42 - 10, this.y - 26, lDmg, this.missileStat, 0, "LEFT"));
+          stationaryLasers.push(new StationaryMissileLaser(this.x + 42 + 10, this.y - 26, lDmg, this.missileStat, 0, "RIGHT"));
         }
         playTone(740, 0.15, "triangle", -200, 0.1);
       }
@@ -1294,23 +1303,36 @@ class Player {
         this.twinEmpChargingTimer = 0; // 발사 후 기두부 원형 펄스 리셋
       }
 
-      // 4초 주기 발사, 1.5초 유지
-      if (this.lightningTimer >= 4.0) {
+      // [항목 7] 2초에 한 번씩 위치를 변경하며 전방 방출
+      if (this.lightningTimer >= 2.0) {
         this.lightningTimer = 0;
         this.twinEmpChargingTimer = 0;
-        const archPulses = createTwinArchEmpPulses(this.x, this.y, fovMult);
+
+        // 내 비행기 높이(몸통 56px) 기준: 기본 3배(168px), 16렙 시 50% 증가한 4.5배(252px)
+        const baseLength = 56 * (isLv16 ? 4.5 : 3.0);
+        const streams = [];
+
+        for (let s = 0; s < 5; s++) {
+          const ang = -Math.PI / 2 + (s - 2) * 0.18 + (Math.random() - 0.5) * 0.12;
+          const sLen = baseLength * (0.85 + Math.random() * 0.3);
+          streams.push({
+            angle: ang,
+            len: sLen,
+            pts: createLightningPoints(this.x, this.y - 24, this.x + Math.cos(ang) * sLen, (this.y - 24) + Math.sin(ang) * sLen, 7, 10),
+            color: (s % 2 === 0) ? "#00f5ff" : "#ff007f"
+          });
+        }
 
         twinFieldBolts.push({
           sourcePlayer: this,
           x: this.x,
-          y: this.y - 26,
-          pulses: archPulses,
+          y: this.y - 24,
+          streams: streams,
           elapsed: 0.0,
-          totalDuration: 3.0, // 6. 지속시간 2배 증가 (1.5s -> 3.0s)
-          archW: archPulses.archW,
-          archH: archPulses.archH
+          totalDuration: 1.8, // 2초 주기 중 1.8초 동안 은은하게 유지
+          baseLength: baseLength
         });
-        playTone(940, 0.25, "sawtooth", -320, 0.2);
+        playTone(850, 0.15, "sawtooth", -200, 0.12);
       }
     }
 
@@ -1526,7 +1548,8 @@ class HomingMissile {
     this.life = 4.0;
     this.target = null;
     this.shadowTimer = 0;
-    this.currentSpeed = isType0 ? 12.0 : 16.5;
+    // 미사일형(Type 0) 초기 속도 30% 감소 (12.0 -> 8.4)
+    this.currentSpeed = isType0 ? 8.4 : 16.5;
   }
   update(dt, enemiesList) {
     this.life -= dt;
@@ -1597,8 +1620,9 @@ class HomingMissile {
       const newAngle = curAngle + Math.max(-turnRate, Math.min(turnRate, diff));
 
       if (this.isType0) {
-        this.currentSpeed = Math.min(22.0, this.currentSpeed + 25.0 * dt); // 최대 가속 22.0
-      } else {
+        // 최대 가속 속도 역시 30% 감소 (22.0 -> 15.4)
+        this.currentSpeed = Math.min(15.4, this.currentSpeed + 17.5 * dt);
+      }} else {
         this.currentSpeed = 16.5;
       }
 
@@ -1653,10 +1677,11 @@ class HomingMissile {
   }
 }
 class StationaryMissileLaser {
-  constructor(x, y, powerDmg, missileLv, angleOffsetRad = 0) {
+  constructor(x, y, powerDmg, missileLv, angleOffsetRad = 0, targetSide = "ALL") {
     this.x = x;
     this.startY = y;
-    this.angleOffsetRad = angleOffsetRad; // 좌우 7.5도 오프셋 각도
+    this.angleOffsetRad = angleOffsetRad;
+    this.targetSide = targetSide; // "LEFT" 또는 "RIGHT" 지정
     this.powerDmg = powerDmg;
     this.missileLv = missileLv;
     this.life = 0.45;
@@ -1678,34 +1703,16 @@ class StationaryMissileLaser {
     let blockedObj = null;
     let blockedIsEnemy = false;
     let blockY = 0;
-
-    if (Array.isArray(enemies)) {
-      for (let i = 0; i < enemies.length; i++) {
-        const e = enemies[i];
-        if (e && e.isHeavy && !e.isDead && e.hp > 0 && e.y < this.startY && e.y >= 20) {
-          if (Math.abs(e.x - this.x) <= e.radius + 6) {
-            if (!blockedObj || e.y > blockY) { blockedObj = e; blockedIsEnemy = true; blockY = e.y + e.radius; }
-          }
-        }
-      }
-    }
-
-    if (meteorManager && Array.isArray(meteorManager.meteors)) {
-      for (let i = 0; i < meteorManager.meteors.length; i++) {
-        const m = meteorManager.meteors[i];
-        if (m && m.active && m.y < this.startY && m.y >= 20) {
-          if (Math.abs(m.x - this.x) <= m.radius + 6) {
-            if (!blockedObj || m.y > blockY) { blockedObj = m; blockedIsEnemy = false; blockY = m.y + m.radius; }
-          }
-        }
-      }
-    }
-
+// ... (blockedObj 체크 부분 유지) ...
     let closerEnemy = null;
     let minD1Sq = Infinity;
     for (let i = 0; i < enemies.length; i++) {
       const e = enemies[i];
       if (e.hp <= 0 || e.isDead || e.isHeavy || e.y >= this.startY || e.y < 20) continue;
+      // [항목 3] 왼쪽 레이저는 왼쪽 대상만, 오른쪽 레이저는 오른쪽 대상만 타겟팅
+      if (this.targetSide === "LEFT" && e.x > this.x + 2) continue;
+      if (this.targetSide === "RIGHT" && e.x < this.x - 2) continue;
+
       if (Math.abs(e.x - this.x) <= maxSearchWidth + e.radius) {
         const dSq = (e.x - this.x) * (e.x - this.x) + (e.y - this.startY) * (e.y - this.startY);
         if (dSq < minD1Sq) { minD1Sq = dSq; closerEnemy = e; }
@@ -1833,7 +1840,7 @@ class StationaryMissileLaser {
         for (let i = 0; i < this.path.length - 1; i++) {
           const segX = this.path[i].x;
           if (Math.abs(segX - currentBoss.x) <= currentBoss.radius + 8) {
-            currentBoss.hp -= 2;
+            currentBoss.hp -= 1.0; // 보스 파괴 횟수 2배 증가 (2 -> 1)
             hitImpacts.push(new BulletHitImpactFX(currentBoss.x, currentBoss.y, "MISSILE_NEEDLE"));
             playTone(450, 0.08, "triangle", 0, 0.08);
             if (currentBoss.hp <= 0) {
@@ -1874,14 +1881,14 @@ class StationaryMissileLaser {
     beamGradInner.addColorStop(1, `rgba(200, 240, 255, ${0.25 * alpha})`);
 
     ctx.strokeStyle = beamGradOuter;
-    ctx.lineWidth = 6.86;
+    ctx.lineWidth = 4.80; // 6.86 대비 30% 슬림화
     ctx.beginPath();
     ctx.moveTo(this.path[0].x, firstY);
     for (let i = 1; i < this.path.length; i++) ctx.lineTo(this.path[i].x, this.path[i].y);
     ctx.stroke();
 
     ctx.strokeStyle = beamGradInner;
-    ctx.lineWidth = 1.96;
+    ctx.lineWidth = 1.37; // 1.96 대비 30% 슬림화
     ctx.beginPath();
     ctx.moveTo(this.path[0].x, firstY);
     for (let i = 1; i < this.path.length; i++) ctx.lineTo(this.path[i].x, this.path[i].y);
@@ -2851,10 +2858,10 @@ function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   if (hitImpacts.length < 30) hitImpacts.push(new BulletHitImpactFX(e.x, e.y, bType));
 
   if (e.isHeavy) {
-    // 트윈형(TWIN)은 파워형 대비 공격횟수 2배 증가 (hitAmount 0.5)
     let hitAmount = 1;
     if (bType === "TWIN") hitAmount = 0.5;
-    else if (bType === "MISSILE_NEEDLE") hitAmount = (20 / 24);
+    // 미사일형 레이저는 파괴 횟수가 2배로 증가하도록 기존 누적량의 절반(10/24) 적용
+    else if (bType === "MISSILE_NEEDLE") hitAmount = (10 / 24);
 
     e.shieldHits = (e.shieldHits || 0) + hitAmount;
     if (explosions.length < 35) explosions.push(new ExplosionFX(e.x, e.y, "#cbd5e1"));
@@ -2866,8 +2873,10 @@ function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   }
 
   if (e.hasShield) {
-    // 트윈형(TWIN)은 보호막 파괴에 필요한 타격횟수 2배 증가 (카운트 0.5씩 누적)
-    e.shieldHits += (bType === "TWIN" ? 0.5 : 1);
+    // 미사일형 레이저(MISSILE_NEEDLE)도 보호막 파괴 횟수 2배 증가 (0.5씩 누적)
+    let hitAmount = 1;
+    if (bType === "TWIN" || bType === "MISSILE_NEEDLE") hitAmount = 0.5;
+    e.shieldHits += hitAmount;
     e.freezeTimer = 0.07;
     e.vx = 0;
     if (explosions.length < 35) explosions.push(new ExplosionFX(e.x, e.y, "#00f5ff"));
@@ -3568,45 +3577,54 @@ function safeGameLoop(now) {
         ctx.textAlign = "left";
         ctx.fillStyle = "#94a3b8";
         ctx.font = `bold 11px ${FONT_FAMILY}`;
-        ctx.fillText("지금 당신의 랭킹", rBoxX + 10, rBoxY + 16);
+        ctx.fillText("LIVE RANKING", rBoxX + 10, rBoxY + 16); // 영문으로 변경
 
-        // 현재 내 점수를 반영한 실시간 순위 리스트 생성
-        const currentRankList = top10List.map(item => ({ name: item.name, score: item.score, isMe: false }));
-        currentRankList.push({ name: "YOU", score: Math.floor(score), isMe: true });
-        currentRankList.sort((a, b) => b.score - a.score);
+        // [최적화] 매 프레임 정렬을 제거하고, 정렬된 allLeaderboardList 내 내 위치만 즉시 계산
+        const baseSource = (allLeaderboardList && allLeaderboardList.length > 0) ? allLeaderboardList : top10List;
+        const curScore = Math.floor(score);
 
-        const myIndex = currentRankList.findIndex(item => item.isMe);
-        
-        // 7줄 윈도우 계산: 아래에서 2번째(인덱스 5)가 '내 등수', 맨 아래(인덱스 6)가 '내 아래 등수', 0~4는 '내 위 5개 등수'
-        const startIndex = myIndex - 5;
-        
+        // 내 등수(0-based index) 이분 탐색: O(log N)
+        let low = 0, high = baseSource.length;
+        while (low < high) {
+          const mid = (low + high) >>> 1;
+          if (baseSource[mid].score > curScore) low = mid + 1;
+          else high = mid;
+        }
+        const myRankIndex = low; // 0등부터 시작 (1위 = 0)
+
+        // 7줄 윈도우 계산: row 5에 '내 등수', row 6에 '나보다 1단계 아래', row 0~4에 '나보다 위 5명'
         ctx.font = `10px ${FONT_FAMILY}`;
         for (let row = 0; row < 7; row++) {
-          const targetIdx = startIndex + row;
           const lineY = rBoxY + 34 + row * 17;
-          
+
           if (row === 5) {
-            // 아래에서 2번째: 내 등수 (진하게 강조)
-            ctx.fillStyle = "rgba(0, 245, 255, 0.18)";
+            // 아래에서 2번째: 내 등수 (하이라이트 강조)
+            ctx.fillStyle = "rgba(0, 245, 255, 0.22)";
             ctx.fillRect(rBoxX + 4, lineY - 11, rBoxW - 8, 15);
             ctx.fillStyle = "#ffe600";
             ctx.font = `bold 11px ${FONT_FAMILY}`;
-            ctx.fillText(`${myIndex + 1}위 YOU`, rBoxX + 10, lineY);
+            ctx.fillText(`${myRankIndex + 1} YOU`, rBoxX + 10, lineY);
             ctx.textAlign = "right";
-            ctx.fillText(`${Math.floor(score)}P`, rBoxX + rBoxW - 10, lineY);
+            ctx.fillText(`${curScore}P`, rBoxX + rBoxW - 10, lineY);
             ctx.textAlign = "left";
             ctx.font = `10px ${FONT_FAMILY}`;
-          } else if (targetIdx >= 0 && targetIdx < currentRankList.length) {
-            const rItem = currentRankList[targetIdx];
-            ctx.fillStyle = (row === 6) ? "#64748b" : "#cbd5e1"; // 아래는 흐리게, 위는 일반 표시
-            ctx.fillText(`${targetIdx + 1}위 ${rItem.name}`, rBoxX + 10, lineY);
-            ctx.textAlign = "right";
-            ctx.fillText(`${rItem.score}P`, rBoxX + rBoxW - 10, lineY);
-            ctx.textAlign = "left";
           } else {
-            ctx.textAlign = "left";
-            ctx.fillStyle = "#334155";
-            ctx.fillText("-", rBoxX + 10, lineY);
+            // row 0~4: 나보다 윗 순위 (myRankIndex - 5 + row)
+            // row 6: 나보다 아래 순위 (myRankIndex)
+            const targetDataIdx = (row < 5) ? (myRankIndex - 5 + row) : myRankIndex;
+            const displayRank = (row < 5) ? (targetDataIdx + 1) : (myRankIndex + 2);
+
+            if (targetDataIdx >= 0 && targetDataIdx < baseSource.length) {
+              const rItem = baseSource[targetDataIdx];
+              ctx.fillStyle = (row === 6) ? "#64748b" : "#cbd5e1";
+              ctx.fillText(`${displayRank} ${rItem.name}`, rBoxX + 10, lineY);
+              ctx.textAlign = "right";
+              ctx.fillText(`${rItem.score}P`, rBoxX + rBoxW - 10, lineY);
+              ctx.textAlign = "left";
+            } else {
+              ctx.fillStyle = "#334155";
+              ctx.fillText("-", rBoxX + 10, lineY);
+            }
           }
         }
         ctx.restore();
@@ -4112,29 +4130,30 @@ function safeGameLoop(now) {
         }
       }
 
-      // 8/16렙 전기장 접촉: 급격하지 않고 완만하게 좌우로 흘려보내기
+      // [항목 7] 전자기 펄스 5개 스트림과 오브젝트의 정밀 척력 물리
       for (let fi = twinFieldBolts.length - 1; fi >= 0; fi--) {
         const fb = twinFieldBolts[fi];
-        const pCenterX = fb.sourcePlayer ? fb.sourcePlayer.x : fb.x;
-        const pCenterY = (fb.sourcePlayer ? fb.sourcePlayer.y : fb.y) - 55;
+        if (!fb || !Array.isArray(fb.streams)) continue;
+        const rootX = fb.sourcePlayer ? fb.sourcePlayer.x : fb.x;
+        const rootY = fb.sourcePlayer ? fb.sourcePlayer.y : fb.y;
 
         const steerTarget = (t) => {
           if (!t || t.hp <= 0 || t.isDead) return;
-          const dx = t.x - pCenterX;
-          const dy = t.y - pCenterY;
-          const dist = Math.hypot(dx, dy);
+          const distToPlayer = Math.hypot(t.x - rootX, t.y - rootY);
+          
+          // 전방 펄스 사거리 안에 있고 비행기보다 위쪽에 있을 때
+          if (distToPlayer <= fb.baseLength + t.radius && t.y < rootY - 10) {
+            const dx = t.x - rootX;
+            // 비행기 중심 기준 좌우 40px 이내로 파고들 때 외곽으로 부드럽게 밀어냄
+            if (Math.abs(dx) < 65 + t.radius) {
+              const pushSign = (dx < 0) ? -1 : (dx > 0 ? 1 : (Math.random() < 0.5 ? -1 : 1));
+              // 내 비행기가 정지해 있으면 자연스럽게 좌우로 빗겨가고, 전진하면 부딪히는 완만한 척력 가속도
+              t.vx = t.vx * 0.96 + pushSign * 0.22;
+              t.x += pushSign * 0.65; // 부드러운 횡이동 보정
 
-          // 펄스 영역 접촉 판정 (아치 상단 림 접촉 판정 보정)
-          if (dist <= fb.archW * 0.60 + t.radius && t.y < (fb.sourcePlayer ? fb.sourcePlayer.y - 20 : fb.y - 20)) {
-            const sideSign = (t.x < pCenterX) ? -1 : 1;
-            // 급격히 꺾이지 않도록 부드러운 외곽 횡가속도(+0.35)를 점진적으로 가해 자연스럽게 빗겨 흘림
-            t.vx = t.vx * 0.94 + sideSign * 0.45;
-            // 하향 속도는 유지하여 자연스러운 포물선 궤적으로 흘러내림
-            t.vy = Math.max(1.2, t.vy);
-
-            if (explosions.length < 35 && Math.random() < 0.15) {
-              explosions.push(new ExplosionFX(t.x, t.y, "#00f5ff"));
-              playTone(720, 0.04, "triangle", 100, 0.04);
+              if (explosions.length < 35 && Math.random() < 0.08) {
+                explosions.push(new ExplosionFX(t.x, t.y, "#00f5ff"));
+              }
             }
           }
         };
@@ -4244,63 +4263,7 @@ function safeGameLoop(now) {
         ctx.restore();
       }
 
-      // 8렙 / 16렙 첨부 이미지형 교차 톱니 아치 펄스 렌더링 (지속적인 형태 일렁임)
-      for (let i = 0; i < twinFieldBolts.length; i++) {
-        const fb = twinFieldBolts[i];
-        if (!fb || !fb.pulses || !Array.isArray(fb.pulses.layers)) continue; // 안전 가드로 렌더 에러 차단
-
-        const rootX = fb.sourcePlayer ? fb.sourcePlayer.x : fb.x;
-        const rootY = fb.sourcePlayer ? fb.sourcePlayer.y : fb.y;
-        const fadeAlpha = Math.max(0, 1.0 - (fb.elapsed / fb.totalDuration));
-
-        ctx.save();
-        ctx.lineJoin = "miter";
-        ctx.lineCap = "round";
-
-        const layers = fb.pulses.layers;
-        for (let l = 0; l < layers.length; l++) {
-          const lyr = layers[l];
-          const segs = lyr.teethCount;
-          const leftX = rootX - fb.archW * 0.48;
-          const rightX = rootX + fb.archW * 0.48;
-          const baseApexY = rootY - fb.archH;
-          const dynamicPhase = curTime * lyr.speed + lyr.phase;
-
-          ctx.strokeStyle = lyr.col;
-          ctx.lineWidth = 2.2;
-          ctx.globalAlpha = fadeAlpha * 0.88;
-          ctx.beginPath();
-
-          for (let s = 0; s <= segs; s++) {
-            const t = s / segs;
-            // 아치형 베이스 궤적
-            const bx = (1 - t) * (1 - t) * leftX + 2 * (1 - t) * t * rootX + t * t * rightX;
-            const by = (1 - t) * (1 - t) * (rootY - 10) + 2 * (1 - t) * t * baseApexY + t * t * (rootY - 10);
-
-            // 첨부 이미지 특유의 안팎 지그재그 톱니 변위 (홀짝 번갈아 진동)
-            const isPeak = (s % 2 === 1);
-            const dynamicJitter = Math.sin(dynamicPhase + s * 1.5) * 6.0;
-            const normalAmp = (isPeak ? -lyr.amp : (lyr.amp * 0.35)) + dynamicJitter;
-
-            // 아치 법선 방향으로 톱니를 돌출시켜 겹겹이 교차되는 리본 연출
-            const nx = (bx - rootX) / (fb.archW * 0.5);
-            const ny = (by - (rootY - 10)) / fb.archH;
-            const px = bx + nx * normalAmp * 0.4;
-            const py = by + ny * normalAmp;
-
-            if (s === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          }
-          ctx.stroke();
-
-          // 화이트 고열 엣지 중심선
-          ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = 0.8;
-          ctx.globalAlpha = fadeAlpha * 0.5;
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
+      // 8렙 / 16렙 첨부 이미지형 교차 톱니 아치 펄스 렌더링 (지속적인 형태
 
       if (currentBoss) currentBoss.draw(curTime);
       if (meteorManager) {
