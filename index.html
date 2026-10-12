@@ -3414,6 +3414,10 @@ function safeGameLoop(now) {
       twinFieldBolts[i].elapsed += dt;
       if (twinFieldBolts[i].elapsed >= twinFieldBolts[i].totalDuration) twinFieldBolts.splice(i, 1);
     }
+    for (let i = twinFieldBolts.length - 1; i >= 0; i--) {
+      twinFieldBolts[i].elapsed += dt;
+      if (twinFieldBolts[i].elapsed >= twinFieldBolts[i].totalDuration) twinFieldBolts.splice(i, 1);
+    }
 
     if (gameState === 0) {
       drawGalaxyBackground(ctx, curTime);
@@ -3971,10 +3975,8 @@ function safeGameLoop(now) {
       for (let i = 0; i < blackHoles.length; i++) blackHoles[i].draw();
 
       // 감전된 적 5줄기 번개 렌더링
-      for (let i = enemyLightningShocks.length - 1; i >= 0; i--) {
+      for (let i = 0; i < enemyLightningShocks.length; i++) {
         const es = enemyLightningShocks[i];
-        es.life -= dt;
-        if (es.life <= 0) { enemyLightningShocks.splice(i, 1); continue; }
         const alpha = Math.max(0, es.life / es.totalLife);
         ctx.save();
         ctx.globalAlpha = alpha;
@@ -3999,12 +4001,9 @@ function safeGameLoop(now) {
         ctx.restore();
       }
 
-      // 8렙 / 16렙 전방 확산 번개 렌더링 (마디 없이 단일 패스 + 부드러운 그라데이션)
-      for (let i = twinFieldBolts.length - 1; i >= 0; i--) {
+      // 8렙 / 16렙 전방 확산 번개 렌더링
+      for (let i = 0; i < twinFieldBolts.length; i++) {
         const fb = twinFieldBolts[i];
-        fb.elapsed += dt;
-        if (fb.elapsed >= fb.totalDuration) { twinFieldBolts.splice(i, 1); continue; }
-
         const progress = Math.min(1.0, fb.elapsed / 0.08);
         const fadeAlpha = Math.max(0, 1.0 - (fb.elapsed - 0.08) / (fb.totalDuration - 0.08));
         const pts = fb.pts;
