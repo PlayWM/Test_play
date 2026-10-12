@@ -1289,8 +1289,7 @@ class Player {
       bullets.push(new Bullet(px, py - 22, -1.0, -17, dmg, 4.5, "LEGEND"));
       bullets.push(new Bullet(px, py - 22, 1.0, -17, dmg, 4.5, "LEGEND"));
       playTone(900, 0.08, "triangle", -400, 0.1);
-    } 
-} else if (this.pType === 2) {
+    } else if (this.pType === 2) {
       if (bullets.length <= 80) {
         // 좌우 한 발씩 교차 발사
         const offsetX = (this.twinFireSide === 0) ? -14 : 14;
@@ -2976,8 +2975,11 @@ if (type === 3) {
 function initBattleState() {
   bullets = []; homingMissiles = []; stationaryLasers = []; missileShadows = []; rockDebrisList = []; hitImpacts = []; suckingEntities = [];
   enemies = []; bossMissiles = []; bossDropItems = []; blackHoles = []; activeLasers = []; currentBoss = null;
-  twinFieldBolts = []; enemyLightningShocks = []; // 신규 번개 배열 초기화 추가
-  nukeBeamBeams = []; isNukingTransition = false;  hedgehogLauncher.active = false;
+  twinFieldBolts = [];
+  enemyLightningShocks = [];
+  nukeBeamBeams = [];
+  isNukingTransition = false;
+  hedgehogLauncher.active = false;
   hedgehogLauncher.flashAlpha = 0;
   hedgehogLauncher.timeStopTimer = 0;
   hedgehogLauncher.isExecutingNuke = false;
