@@ -1279,47 +1279,27 @@ class Player {
         this.twinEmpChargingTimer = 0; // 발사 후 기두부 원형 펄스 리셋
       }
 
-      // [항목 4] 노출 쿨타임 2배 증가 (2.0s -> 4.0s), 노출 지속시간 2배 증가 (2.0s -> 4.0s)
+      // 트윈형 8렙: 비행기 꼭지점 위쪽으로 비행기 높이 3배(168px) 위치에 자기장 생성
       if (this.lightningTimer >= 4.0) {
         this.lightningTimer = 0;
         this.twinEmpChargingTimer = 0;
 
         // 비행기 크기(반경 22px)의 3배(66px), 16렙 시 30% 더 큰 86px
         const baseR = (this.radius * 3) * (isLv16 ? 1.3 : 1.0);
-        const spawnCenterY = (LOGICAL_HEIGHT * 0.5) + (Math.random() - 0.5) * (LOGICAL_HEIGHT * 0.4);
-        const spawnCenterX = 60 + Math.random() * (LOGICAL_WIDTH - 120);
+        // 비행기 머리 꼭지점(y - 28)에서 위쪽 방향으로 비행기 높이(56px)의 3배(168px) 떨어진 위치
+        const forwardOffset = 168;
 
-        // 파형, 색상, 길이가 다양한 10종의 전자기파 생성
-        const palette = ["#00f5ff", "#ff007f", "#9d4edd", "#38bdf8", "#f43f5e", "#a855f7", "#38ef7d", "#ffffff", "#00ffff", "#e879f9"];
-        const waveKinds = [];
-        for (let k = 0; k < 10; k++) {
-          const ang = Math.random() * Math.PI * 2;
-          const dist = Math.random() * (baseR * 0.75);
-          waveKinds.push({
-            ox: Math.cos(ang) * dist,
-            oy: Math.sin(ang) * dist,
-            length: baseR * (0.35 + Math.random() * 0.65),
-            angle: Math.random() * Math.PI * 2,
-            rotSpeed: (Math.random() - 0.5) * 3.5,
-            color: palette[k % palette.length],
-            waveType: k % 3, // 0: 지그재그 전격, 1: 사인 곡선파, 2: 복합 스파크 링
-            freq: 8.0 + Math.random() * 12.0,
-            sparkleSpeed: 10.0 + Math.random() * 15.0,
-            phase: Math.random() * Math.PI * 2
-          });
-        }
-
-        if (twinFieldBolts.length >= 3) {
-          twinFieldBolts.shift();
-        }
         twinFieldBolts.push({
           type: "ORB_EMP",
-          x: spawnCenterX,
-          y: spawnCenterY,
+          sourcePlayer: this,
           radius: baseR,
-          waves: waveKinds,
+          forwardOffset: forwardOffset,
+          x: this.x,
+          y: (this.y - 28) - forwardOffset,
+          activeBolts: [],
+          boltIntervalTimer: 0.0,
           elapsed: 0.0,
-          totalDuration: 4.0, // 노출시간 2배 증가 (4.0초 유지)
+          totalDuration: 4.0,
           dmgTimer: 0.0,
           dmgVal: this.powerStat
         });
@@ -1839,16 +1819,20 @@ class StationaryMissileLaser {
     this.damageTickTimer += dt;
     if (this.damageTickTimer >= 0.20) {
       this.damageTickTimer = 0;
+      const curTickTime = performance.now() / 1000;
       for (let i = 0; i < this.hitEnemies.length; i++) {
         const target = this.hitEnemies[i];
         if (!target || !target.enemy) continue;
         const e = target.enemy;
         if (typeof e.hp === "number" && !e.isDead && e.hp > 0) {
-          const actualDmg = this.powerDmg * Math.pow(0.7, target.bendCount || 0);
-          const hitCount = e.hasShield ? 2 : 1;
-          for (let h = 0; h < hitCount; h++) {
-            applyDamageToEnemy(e, actualDmg, "MISSILE_NEEDLE", false);
+          // 2줄기 레이저가 동시에 같은 대상(돌맹이/보호막)을 맞춰도 1개 맞춘 것과 같게 처리 (0.15초 이내 중복 카운트 차단)
+          if ((e.isHeavy || e.hasShield) && e.lastMissileLaserTick && (curTickTime - e.lastMissileLaserTick < 0.15)) {
+            continue;
           }
+          e.lastMissileLaserTick = curTickTime;
+
+          const actualDmg = this.powerDmg * Math.pow(0.7, target.bendCount || 0);
+          applyDamageToEnemy(e, actualDmg, "MISSILE_NEEDLE", false);
         }
       }
 
@@ -2437,8 +2421,9 @@ class BlackHole {
 class RockDebrisFX {
   constructor(x, y) {
     this.x = x; this.y = y;
-    this.life = 2.0;
-    this.totalLife = 2.0;
+    // 잔재 소멸 시간 40% 단축 (2.0초 -> 1.2초)
+    this.life = 1.2;
+    this.totalLife = 1.2;
     this.shards = Array.from({ length: 6 }, (_, idx) => {
       const ang = (idx * Math.PI / 3) + (Math.random() - 0.5) * 0.4;
       const spd = (1.5 + Math.random() * 2.5) * 0.5;
@@ -2927,10 +2912,10 @@ function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   if (hitImpacts.length < 30) hitImpacts.push(new BulletHitImpactFX(e.x, e.y, bType));
 
   if (e.isHeavy) {
-    // 파워형 비행기(1렙 단발 위력 1.5)와 동일한 시간 안에 파괴되도록 hitAmount 1.5 반영
     let hitAmount = 1;
     if (bType === "TWIN") hitAmount = 0.5;
-    else if (bType === "MISSILE_NEEDLE") hitAmount = 1.5;
+    // 0.2초 틱마다 0.33씩 누적되어 약 12초(파워형 1렙 20발 발사 시간과 동일)만에 파괴
+    else if (bType === "MISSILE_NEEDLE") hitAmount = 0.33;
 
     e.shieldHits = (e.shieldHits || 0) + hitAmount;
     if (explosions.length < 35) explosions.push(new ExplosionFX(e.x, e.y, "#cbd5e1"));
@@ -2942,10 +2927,9 @@ function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   }
 
   if (e.hasShield) {
-    // 보호막 비행기 역시 파워형 비행기와 동일한 시간에 파괴되도록 1.5 반영
     let hitAmount = 1;
     if (bType === "TWIN") hitAmount = 0.5;
-    else if (bType === "MISSILE_NEEDLE") hitAmount = 1.5;
+    else if (bType === "MISSILE_NEEDLE") hitAmount = 0.33;
     e.shieldHits += hitAmount;
     e.freezeTimer = 0.07;
     e.vx = 0;
@@ -4321,80 +4305,97 @@ function safeGameLoop(now) {
         ctx.restore();
       }
 
-      // [항목 4] 아주 옅은 회색 그라데이션 원 및 10종의 지속 반짝임 신비로운 전자기파
+      // 트윈형 8렙 전자기장: 외곽선/곡선선 삭제, 30% 진해진 회색 그라데이션, 40~60도 각진 번개 3개 0.3초 노출 연출
       for (let i = 0; i < twinFieldBolts.length; i++) {
         const fb = twinFieldBolts[i];
-        if (!fb || fb.type !== "ORB_EMP" || !Array.isArray(fb.waves)) continue;
+        if (!fb || fb.type !== "ORB_EMP") continue;
+
+        // 비행기 꼭지점(y - 28)에서 위쪽 방향으로 비행기 높이 3배(168px) 위치 추적
+        if (fb.sourcePlayer) {
+          fb.x = fb.sourcePlayer.x;
+          fb.y = (fb.sourcePlayer.y - 28) - fb.forwardOffset;
+        }
+
         const fadeAlpha = Math.max(0, 1.0 - (fb.elapsed / fb.totalDuration));
+
+        // 0.3초 주기로 번개 3개 생성 및 갱신 (0.3초간 노출)
+        fb.boltIntervalTimer = (fb.boltIntervalTimer || 0) + dt;
+        if (!fb.activeBolts || fb.boltIntervalTimer >= 0.30) {
+          fb.boltIntervalTimer = 0.0;
+          const colors = ["#00f5ff", "#ff007f", "#ffffff", "#39ff14", "#d946ef"];
+          fb.activeBolts = [];
+
+          for (let b = 0; b < 3; b++) {
+            // 원 내부 임의의 시작점
+            const startAng = Math.random() * Math.PI * 2;
+            const startDist = Math.random() * (fb.radius * 0.50);
+            let cx = Math.cos(startAng) * startDist;
+            let cy = Math.sin(startAng) * startDist;
+
+            const pts = [{ x: cx, y: cy }];
+            let curAngle = -Math.PI / 2 + (Math.random() - 0.5) * 1.0;
+
+            // 각지게 4번 꺾임 (꺾인 각도 40~60도)
+            for (let s = 0; s < 4; s++) {
+              const deg = 40 + Math.random() * 20; // 40~60도
+              const radChange = (deg * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);
+              curAngle += radChange;
+              const stepLen = 10 + Math.random() * 12;
+              cx += Math.cos(curAngle) * stepLen;
+              cy += Math.sin(curAngle) * stepLen;
+              pts.push({ x: cx, y: cy });
+            }
+
+            fb.activeBolts.push({
+              pts: pts,
+              color: colors[Math.floor(Math.random() * colors.length)]
+            });
+          }
+        }
 
         ctx.save();
         ctx.translate(fb.x, fb.y);
 
-        // 1. 아주 옅은 회색 그라데이션 원
+        // 1. 내부 회색 그라데이션 원 (지금 대비 30% 더 진하게: Alpha 0.29 / 0.16 / 0.07)
         const bgGrayGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, fb.radius);
-        bgGrayGrad.addColorStop(0, `rgba(235, 240, 245, ${0.22 * fadeAlpha})`);
-        bgGrayGrad.addColorStop(0.55, `rgba(180, 190, 205, ${0.12 * fadeAlpha})`);
-        bgGrayGrad.addColorStop(0.85, `rgba(130, 140, 155, ${0.05 * fadeAlpha})`);
+        bgGrayGrad.addColorStop(0, `rgba(235, 240, 245, ${0.29 * fadeAlpha})`);
+        bgGrayGrad.addColorStop(0.55, `rgba(180, 190, 205, ${0.16 * fadeAlpha})`);
+        bgGrayGrad.addColorStop(0.85, `rgba(130, 140, 155, ${0.07 * fadeAlpha})`);
         bgGrayGrad.addColorStop(1.0, "rgba(200, 210, 220, 0)");
         ctx.fillStyle = bgGrayGrad;
         ctx.beginPath();
         ctx.arc(0, 0, fb.radius, 0, Math.PI * 2);
         ctx.fill();
 
-        // 외곽 은은한 미세 링
-        ctx.strokeStyle = `rgba(220, 230, 242, ${0.18 * fadeAlpha})`;
-        ctx.lineWidth = 1.0;
-        ctx.stroke();
+        // 2. 외곽 라인 및 내부 곡선 라인 삭제됨 (스트로크 없음)
 
-        // 2. 10종의 파형, 색상, 길이가 다양한 지속 반짝임 전자기파 렌더링
+        // 3. 임의 위치 번개 3개 연출 (각지게 4번 꺾인 번개)
         ctx.lineCap = "round";
-        ctx.lineJoin = "round";
+        ctx.lineJoin = "miter";
+        for (let b = 0; b < fb.activeBolts.length; b++) {
+          const bolt = fb.activeBolts[b];
+          if (!bolt.pts || bolt.pts.length < 2) continue;
 
-        for (let k = 0; k < fb.waves.length; k++) {
-          const w = fb.waves[k];
-          const curT = performance.now() / 1000;
-          // 임의 위치에서 고속 반짝임(Sparkle)
-          const sparkle = Math.sin(curT * w.sparkleSpeed + w.phase) * 0.45 + 0.55;
-          const curRot = w.angle + curT * w.rotSpeed;
-          const segs = 14;
-
-          ctx.save();
-          ctx.translate(w.ox, w.oy);
-          ctx.rotate(curRot);
-
-          ctx.strokeStyle = w.color;
-          ctx.lineWidth = 1.6;
-          ctx.globalAlpha = fadeAlpha * sparkle * 0.88;
+          ctx.strokeStyle = bolt.color;
+          ctx.lineWidth = 2.0;
+          ctx.globalAlpha = fadeAlpha * 0.95;
           ctx.beginPath();
-
-          for (let s = 0; s <= segs; s++) {
-            const prog = (s / segs) - 0.5; // -0.5 ~ +0.5
-            const px = prog * w.length;
-            let py = 0;
-
-            if (w.waveType === 0) {
-              // 꺾임 지그재그 전자기파
-              py = (s % 2 === 0 ? 1 : -1) * 5.0 * Math.sin(curT * 12.0 + s);
-            } else if (w.waveType === 1) {
-              // 부드러운 사인 고주파 전자기파
-              py = Math.sin(prog * Math.PI * 4.0 + curT * w.freq) * 6.5;
-            } else {
-              // 복합 스파크 펄스파
-              py = Math.cos(prog * Math.PI * 6.0 + curT * 15.0) * (3.5 + Math.random() * 2.5);
-            }
-
-            if (s === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
+          ctx.moveTo(bolt.pts[0].x, bolt.pts[0].y);
+          for (let p = 1; p < bolt.pts.length; p++) {
+            ctx.lineTo(bolt.pts[p].x, bolt.pts[p].y);
           }
           ctx.stroke();
 
-          // 신비로운 화이트 플라즈마 코어 중심선
+          // 번개 중심 고열 화이트 심선
           ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = 0.7;
-          ctx.globalAlpha = fadeAlpha * sparkle * 0.65;
+          ctx.lineWidth = 0.9;
+          ctx.globalAlpha = fadeAlpha * 0.90;
+          ctx.beginPath();
+          ctx.moveTo(bolt.pts[0].x, bolt.pts[0].y);
+          for (let p = 1; p < bolt.pts.length; p++) {
+            ctx.lineTo(bolt.pts[p].x, bolt.pts[p].y);
+          }
           ctx.stroke();
-
-          ctx.restore();
         }
         ctx.restore();
       }
