@@ -32,7 +32,7 @@ const nameInput = document.getElementById("name-input");
 
 const LOGICAL_WIDTH = 450;
 const LOGICAL_HEIGHT = 800;
-const VERSION_STR = "v20261011.018";
+const VERSION_STR = "v20261012.01";
 const FIREBASE_URL = "https://flywm-d0b39-default-rtdb.asia-southeast1.firebasedatabase.app/leaderboard.json";
 const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Malgun Gothic', sans-serif";
 
@@ -170,32 +170,19 @@ function triggerEnemyLightningShock(impactX, impactY, enemy) {
   });
 }
 
-// 트윈 전용 아치형 전자기 펄스 데이터 생성 (사이안 & 마젠타 2색, 두께 50% 슬림, 진동주기 30% 감속)
+// 첨부 이미지 스타일: 계속 형태가 일렁이며 교차하는 톱니형 아치 전자기장
 function createTwinArchEmpPulses(px, py, fovMult = 1.0) {
-  const pulses = [];
-  const colors = ["#00f5ff", "#ff007f"]; // 2가지 색상 통일
-  const count = Math.round(6 * fovMult); // 8렙: 6줄기, 16렙: 12줄기
-  const archW = 140 * fovMult;
-  const archH = 95 * fovMult;
-
-  for (let i = 0; i < count; i++) {
-    pulses.push({
-      col: colors[i % 2],
-      // 50% 슬림화된 최대 두께 (1.0px ~ 1.9px)
-      peakWidth: 1.0 + Math.random() * 0.9,
-      // 진동 주기 30% 감속된 주파수 (10.0 -> 7.0)
-      freq: 5.0 + Math.random() * 4.0,
-      phase: Math.random() * Math.PI * 2,
-      // 분산 앵커 존 오프셋 (양 끝이 한 점으로 뭉치지 않고 최대폭의 20% 분산)
-      leftAnchorOffset: (Math.random() - 0.5) * 14,
-      rightAnchorOffset: (Math.random() - 0.5) * 14,
-      // 펄스 가닥별 무작위 감쇠 수명 (종료 시 개별 소멸)
-      decayLag: 0.15 + Math.random() * 0.25,
-      archW: archW,
-      archH: archH
-    });
-  }
-  return pulses;
+  const layers = [
+    { col: "#00f5ff", teethCount: 16, amp: 26 * fovMult, speed: 4.5, phase: 0 },
+    { col: "#ff007f", teethCount: 14, amp: 28 * fovMult, speed: -5.0, phase: Math.PI / 3 },
+    { col: "#00f5ff", teethCount: 12, amp: 22 * fovMult, speed: 6.0, phase: Math.PI / 2 },
+    { col: "#ff007f", teethCount: 18, amp: 24 * fovMult, speed: -4.0, phase: Math.PI }
+  ];
+  return {
+    layers: layers,
+    archW: 160 * fovMult,
+    archH: 105 * fovMult
+  };
 }
 
 // =================================================================
@@ -1249,9 +1236,8 @@ class Player {
       if (this.missileLaserTimer >= laserInterval) {
         this.missileLaserTimer = 0;
         const lDmg = Math.max(1.0, this.getMissileDamage() * 0.5);
-        const rad7_5 = (7.5 * Math.PI) / 180; // 7.5도 라디안 변환 (총 15도 전개)
 
-       // 분할된 좌우 머리 위치(x - 10, x + 10)에서 수직 0도로 2줄기 개별 발사
+        // 분할된 좌우 머리 위치(x - 10, x + 10)에서 수직 0도로 2줄기 개별 발사
         stationaryLasers.push(new StationaryMissileLaser(this.x - 10, this.y - 26, lDmg, this.missileStat, 0));
         stationaryLasers.push(new StationaryMissileLaser(this.x + 10, this.y - 26, lDmg, this.missileStat, 0));
 
@@ -1288,9 +1274,9 @@ class Player {
           y: this.y - 26,
           pulses: archPulses,
           elapsed: 0.0,
-          totalDuration: 1.5, // 1.5초 유지
-          archW: 140 * fovMult,
-          archH: 95 * fovMult
+          totalDuration: 3.0, // 6. 지속시간 2배 증가 (1.5s -> 3.0s)
+          archW: archPulses.archW,
+          archH: archPulses.archH
         });
         playTone(940, 0.25, "sawtooth", -320, 0.2);
       }
@@ -1391,29 +1377,46 @@ shoot(curTime, bullets) {
         drawVectorLaserPod(ctx, -32, 8, isFlashing, curTime);
       }
 
-      // 1. 기두부 충전 원형 펄스 (최대 12px 크기로 50% 축소, 사이안 & 마젠타 2색 적용)
+      // 4. 기두부 충전 펄스: 충전될수록 내부에서 번개가 충돌하며 가속하는 펄스
       if (this.pType === 2 && this.twinEmpChargingTimer > 0) {
-        const pR = this.twinEmpChargingTimer * 12.0; // 최대 크기 12px
-        const pulseR = pR + Math.sin(curTime * 14.0) * 1.5;
-        const grad = ctx.createRadialGradient(0, -28, 1, 0, -28, Math.max(2, pulseR));
-        grad.addColorStop(0, "#ffffff");
-        grad.addColorStop(0.4, "#00f5ff");
-        grad.addColorStop(0.85, "#ff007f");
-        grad.addColorStop(1, "rgba(255, 0, 127, 0)");
+        const pProg = this.twinEmpChargingTimer; // 0.0 ~ 1.0
+        const pR = Math.max(3, pProg * 12.0);
+        // 충전 완료에 가까워질수록 가속도 증가 (최대 40.0 속도)
+        const speedMult = 10.0 + pProg * 35.0;
+        const noseY = -28;
 
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(0, -28, Math.max(2, pulseR), 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = "#00f5ff";
+        ctx.save();
+        ctx.strokeStyle = "rgba(0, 245, 255, 0.4)";
         ctx.lineWidth = 1.0;
         ctx.beginPath();
-        ctx.arc(0, -28, Math.max(2, pulseR * 0.7), 0, Math.PI * 2);
+        ctx.arc(0, noseY, pR, 0, Math.PI * 2);
         ctx.stroke();
-      }
 
-      ctx.restore();
+        // 내부에서 서로 부딪히는 번개 절선 스파크 (사이안/마젠타)
+        const sparkCount = 4;
+        for (let s = 0; s < sparkCount; s++) {
+          const sparkAng = curTime * speedMult + s * (Math.PI / 2);
+          const x1 = Math.cos(sparkAng) * pR * 0.9;
+          const y1 = noseY + Math.sin(sparkAng) * pR * 0.9;
+          const x2 = Math.cos(sparkAng + Math.PI + (Math.random() - 0.5)) * pR * 0.85;
+          const y2 = noseY + Math.sin(sparkAng + Math.PI + (Math.random() - 0.5)) * pR * 0.85;
+
+          ctx.strokeStyle = (s % 2 === 0) ? "#00f5ff" : "#ff007f";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          const midDisp = (Math.random() - 0.5) * (pR * 0.6);
+          ctx.lineTo((x1 + x2) / 2 + midDisp, (y1 + y2) / 2 + midDisp);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+
+        // 중심 고열 플라즈마 코어
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(0, noseY, 2.0 + pProg * 2.0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     };
 
     drawShipAt(this.x, this.y, false);
@@ -2806,8 +2809,11 @@ function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   if (hitImpacts.length < 30) hitImpacts.push(new BulletHitImpactFX(e.x, e.y, bType));
 
   if (e.isHeavy) {
-    // 레이저(MISSILE_NEEDLE)의 피격 누적량을 절반으로 줄여 파괴 기준을 2배로 증가 (20/12 -> 20/24)
-    const hitAmount = (bType === "MISSILE_NEEDLE") ? (20 / 24) : 1;
+    // 트윈형(TWIN)은 파워형 대비 공격횟수 2배 증가 (hitAmount 0.5)
+    let hitAmount = 1;
+    if (bType === "TWIN") hitAmount = 0.5;
+    else if (bType === "MISSILE_NEEDLE") hitAmount = (20 / 24);
+
     e.shieldHits = (e.shieldHits || 0) + hitAmount;
     if (explosions.length < 35) explosions.push(new ExplosionFX(e.x, e.y, "#cbd5e1"));
     playTone(600, 0.05, "sawtooth", -100, 0.08);
@@ -2818,8 +2824,9 @@ function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   }
 
   if (e.hasShield) {
-    e.shieldHits++;
-    e.freezeTimer = 0.07; // 기존 0.2초 대비 50% 단축
+    // 트윈형(TWIN)은 보호막 파괴에 필요한 타격횟수 2배 증가 (카운트 0.5씩 누적)
+    e.shieldHits += (bType === "TWIN" ? 0.5 : 1);
+    e.freezeTimer = 0.07;
     e.vx = 0;
     if (explosions.length < 35) explosions.push(new ExplosionFX(e.x, e.y, "#00f5ff"));
     playTone(820, 0.05, "triangle", 0, 0.06);
@@ -3570,28 +3577,31 @@ function safeGameLoop(now) {
         ctx.lineWidth = 1.8;
         ctx.stroke();
 
-        // 미사일형(i === 0)과 트윈형(i === 2) 오른쪽 끝에 30도 휜 RENEWAL 네온 뱃지
+        // 미사일형(i === 0)과 트윈형(i === 2) 오른쪽 끝 2배 크기 & 반짝이는 RENEWAL 뱃지
         if (i === 0 || i === 2) {
           ctx.save();
-          const badgeX = LOGICAL_WIDTH - 65;
-          const badgeY = c.y + 24;
-          const slowGlow = Math.sin(curTime * 3.0) * 0.35 + 0.65; // 부드러운 점멸
+          const badgeX = LOGICAL_WIDTH - 55;
+          const badgeY = c.y + 28;
+          // 고속 반짝임(10Hz) + 점멸 펄스
+          const sparkle = Math.sin(curTime * 10.0) * 0.4 + 0.6;
+          const isFlash = Math.floor(curTime * 8) % 2 === 0;
 
           ctx.translate(badgeX, badgeY);
-          ctx.rotate((30 * Math.PI) / 180); // 30도 회전
+          ctx.rotate((30 * Math.PI) / 180);
 
-          ctx.shadowBlur = 10;
+          ctx.shadowBlur = isFlash ? 18 : 8;
           ctx.shadowColor = (i === 0) ? "#00f5ff" : "#00ff66";
-          ctx.fillStyle = `rgba(15, 23, 42, ${slowGlow})`;
-          ctx.strokeStyle = (i === 0) ? `rgba(0, 245, 255, ${slowGlow})` : `rgba(0, 255, 102, ${slowGlow})`;
-          ctx.lineWidth = 1.6;
+          ctx.fillStyle = isFlash ? "rgba(20, 35, 60, 0.95)" : `rgba(10, 18, 32, ${sparkle})`;
+          ctx.strokeStyle = isFlash ? "#ffffff" : ((i === 0) ? "#00f5ff" : "#00ff66");
+          ctx.lineWidth = isFlash ? 2.8 : 2.0;
 
-          drawRoundRect(ctx, -24, -9, 48, 18, 4);
+          // 크기 2배 (가로 96, 세로 36, 폰트 14px)
+          drawRoundRect(ctx, -48, -18, 96, 36, 6);
           ctx.fill();
           ctx.stroke();
 
-          ctx.fillStyle = "#ffffff";
-          ctx.font = `bold 9px ${FONT_FAMILY}`;
+          ctx.fillStyle = isFlash ? "#ffe600" : "#ffffff";
+          ctx.font = `bold 14px ${FONT_FAMILY}`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText("RENEWAL", 0, 0);
@@ -3994,11 +4004,11 @@ function safeGameLoop(now) {
         }
       }
 
-      // 8/16렙 전자기 펄스 접촉 판정 (데미지 없음 + 최대 45도 외곽 스티어링 굴절)
+      // 8/16렙 전기장 접촉: 급격하지 않고 완만하게 좌우로 흘려보내기
       for (let fi = twinFieldBolts.length - 1; fi >= 0; fi--) {
         const fb = twinFieldBolts[fi];
         const pCenterX = fb.sourcePlayer ? fb.sourcePlayer.x : fb.x;
-        const pCenterY = (fb.sourcePlayer ? fb.sourcePlayer.y : fb.y) - 60;
+        const pCenterY = (fb.sourcePlayer ? fb.sourcePlayer.y : fb.y) - 55;
 
         const steerTarget = (t) => {
           if (!t || t.hp <= 0 || t.isDead) return;
@@ -4006,29 +4016,22 @@ function safeGameLoop(now) {
           const dy = t.y - pCenterY;
           const dist = Math.hypot(dx, dy);
 
-          // 아치 펄스 림 영역 접촉 체크
-          if (dist <= fb.archW * 0.65 + t.radius && t.y < (fb.sourcePlayer ? fb.sourcePlayer.y : fb.y)) {
-            const curSpd = Math.hypot(t.vx, t.vy) || 1.8;
-            const curAng = Math.atan2(t.vy, t.vx);
+          // 펄스 영역 접촉 판정 (아치 상단 림 접촉 판정 보정)
+          if (dist <= fb.archW * 0.60 + t.radius && t.y < (fb.sourcePlayer ? fb.sourcePlayer.y - 20 : fb.y - 20)) {
             const sideSign = (t.x < pCenterX) ? -1 : 1;
-            // 이동해오던 방향 대비 최대 45도(30~45도) 외곽 편향 굴절 (내 비행기로 파고들지 않음)
-            const deflectRad = (30 + Math.random() * 15) * (Math.PI / 180) * sideSign;
-            const newAng = curAng + deflectRad;
+            // 급격히 꺾이지 않도록 부드러운 외곽 횡가속도(+0.35)를 점진적으로 가해 자연스럽게 빗겨 흘림
+            t.vx = t.vx * 0.94 + sideSign * 0.45;
+            // 하향 속도는 유지하여 자연스러운 포물선 궤적으로 흘러내림
+            t.vy = Math.max(1.2, t.vy);
 
-            t.vx = Math.cos(newAng) * curSpd;
-            t.vy = Math.max(0.4, Math.sin(newAng) * curSpd);
-
-            // 반사 스파크 FX (데미지 없이 물리력만 가함)
-            if (explosions.length < 35 && Math.random() < 0.25) {
+            if (explosions.length < 35 && Math.random() < 0.15) {
               explosions.push(new ExplosionFX(t.x, t.y, "#00f5ff"));
-              playTone(720, 0.04, "triangle", 150, 0.05);
+              playTone(720, 0.04, "triangle", 100, 0.04);
             }
           }
         };
 
-        // 적기, 암석 굴절
         for (let ei = 0; ei < enemies.length; ei++) steerTarget(enemies[ei]);
-        // 혜성 굴절
         if (meteorManager && Array.isArray(meteorManager.meteors)) {
           for (let mi = 0; mi < meteorManager.meteors.length; mi++) steerTarget(meteorManager.meteors[mi]);
         }
@@ -4044,8 +4047,9 @@ function safeGameLoop(now) {
             if (b.isBlackHoleTrigger) {
               blackHoles.push(new BlackHole(b.x, b.y, 25));
             }
+            const bossDmg = (b.bulletType === "TWIN") ? 0.5 : 1.0; // 트윈형은 보스 파괴 요구 타격수 2배
             bullets.splice(bi, 1);
-            currentBoss.hp--;
+            currentBoss.hp -= bossDmg;
             if (currentBoss.hp <= 0) {
               score += 100;
               bossDropItems.push(new BossDropItem(currentBoss.x, currentBoss.y));
@@ -4132,68 +4136,58 @@ function safeGameLoop(now) {
         ctx.restore();
       }
 
-      // 8렙 / 16렙 아치형 전자기 펄스 렌더링 (50% 두께 축소, 양 끝단 60% 투명도 감쇠, 개별 소멸)
+      // 8렙 / 16렙 첨부 이미지형 교차 톱니 아치 펄스 렌더링 (지속적인 형태 일렁임)
       for (let i = 0; i < twinFieldBolts.length; i++) {
         const fb = twinFieldBolts[i];
         const rootX = fb.sourcePlayer ? fb.sourcePlayer.x : fb.x;
         const rootY = fb.sourcePlayer ? fb.sourcePlayer.y : fb.y;
+        const fadeAlpha = Math.max(0, 1.0 - (fb.elapsed / fb.totalDuration));
 
         ctx.save();
+        ctx.lineJoin = "miter";
         ctx.lineCap = "round";
-        ctx.lineJoin = "round";
 
-        for (let pIdx = 0; pIdx < fb.pulses.length; pIdx++) {
-          const p = fb.pulses[pIdx];
-          // 가닥별 개별 랜덤 수명 소멸 계산
-          const pLifeRemain = (fb.totalDuration + p.decayLag) - fb.elapsed;
-          if (pLifeRemain <= 0) continue;
+        const layers = fb.pulses.layers;
+        for (let l = 0; l < layers.length; l++) {
+          const lyr = layers[l];
+          const segs = lyr.teethCount;
+          const leftX = rootX - fb.archW * 0.48;
+          const rightX = rootX + fb.archW * 0.48;
+          const baseApexY = rootY - fb.archH;
+          const dynamicPhase = curTime * lyr.speed + lyr.phase;
 
-          const lifeAlpha = Math.min(1.0, Math.max(0, pLifeRemain / 0.35));
-          const leftAnchorX = rootX - fb.archW * 0.45 + p.leftAnchorOffset;
-          const rightAnchorX = rootX + fb.archW * 0.45 + p.rightAnchorOffset;
-          const anchorY = rootY - 14;
-          const midApexY = rootY - fb.archH;
+          ctx.strokeStyle = lyr.col;
+          ctx.lineWidth = 2.2;
+          ctx.globalAlpha = fadeAlpha * 0.88;
+          ctx.beginPath();
 
-          // 진동 주기 30% 감속 반영 (p.freq * 0.7)
-          const wavePhase = curTime * (p.freq * 0.7) + p.phase;
-          const segs = 18;
+          for (let s = 0; s <= segs; s++) {
+            const t = s / segs;
+            // 아치형 베이스 궤적
+            const bx = (1 - t) * (1 - t) * leftX + 2 * (1 - t) * t * rootX + t * t * rightX;
+            const by = (1 - t) * (1 - t) * (rootY - 10) + 2 * (1 - t) * t * baseApexY + t * t * (rootY - 10);
 
-          for (let s = 0; s < segs; s++) {
-            const t1 = s / segs;
-            const t2 = (s + 1) / segs;
+            // 첨부 이미지 특유의 안팎 지그재그 톱니 변위 (홀짝 번갈아 진동)
+            const isPeak = (s % 2 === 1);
+            const dynamicJitter = Math.sin(dynamicPhase + s * 1.5) * 6.0;
+            const normalAmp = (isPeak ? -lyr.amp : (lyr.amp * 0.35)) + dynamicJitter;
 
-            // 아치형 2차 베지어 곡선 좌표
-            const bx1 = (1 - t1) * (1 - t1) * leftAnchorX + 2 * (1 - t1) * t1 * rootX + t1 * t1 * rightAnchorX;
-            const by1 = (1 - t1) * (1 - t1) * anchorY + 2 * (1 - t1) * t1 * midApexY + t1 * t1 * anchorY;
-            const bx2 = (1 - t2) * (1 - t2) * leftAnchorX + 2 * (1 - t2) * t2 * rootX + t2 * t2 * rightAnchorX;
-            const by2 = (1 - t2) * (1 - t2) * anchorY + 2 * (1 - t2) * t2 * midApexY + t2 * t2 * anchorY;
+            // 아치 법선 방향으로 톱니를 돌출시켜 겹겹이 교차되는 리본 연출
+            const nx = (bx - rootX) / (fb.archW * 0.5);
+            const ny = (by - (rootY - 10)) / fb.archH;
+            const px = bx + nx * normalAmp * 0.4;
+            const py = by + ny * normalAmp;
 
-            // 양 끝단 점진적 60% 투명도 감쇠 (중앙 1.0 -> 양 끝단 0.40)
-            const edgeFalloff = 0.40 + 0.60 * (1.0 - Math.abs(t1 - 0.5) * 2.0);
-            const segAlpha = edgeFalloff * lifeAlpha;
-
-            // 50% 축소된 펄스 두께 (0.8px ~ 1.9px)
-            const segW = Math.max(0.8, p.peakWidth * edgeFalloff);
-            const jx = Math.sin(wavePhase + t1 * 8.0) * (3.0 * edgeFalloff);
-            const jy = Math.cos(wavePhase + t1 * 6.0) * (2.0 * edgeFalloff);
-
-            ctx.strokeStyle = p.col;
-            ctx.globalAlpha = segAlpha;
-            ctx.lineWidth = segW;
-            ctx.beginPath();
-            ctx.moveTo(bx1 + jx, by1 + jy);
-            ctx.lineTo(bx2 + jx, by2 + jy);
-            ctx.stroke();
-
-            // 고열 코어 중심선
-            ctx.strokeStyle = "#ffffff";
-            ctx.globalAlpha = segAlpha * 0.65;
-            ctx.lineWidth = segW * 0.4;
-            ctx.beginPath();
-            ctx.moveTo(bx1 + jx, by1 + jy);
-            ctx.lineTo(bx2 + jx, by2 + jy);
-            ctx.stroke();
+            if (s === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
           }
+          ctx.stroke();
+
+          // 화이트 고열 엣지 중심선
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 0.8;
+          ctx.globalAlpha = fadeAlpha * 0.5;
+          ctx.stroke();
         }
         ctx.restore();
       }
