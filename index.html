@@ -3508,6 +3508,12 @@ function safeGameLoop(now) {
     const dt = Math.min(0.05, (now - lastTime) / 1000);
     lastTime = now;
 
+    // 인게임 실시간 랭킹 백그라운드 동기화 (15초 주기)
+    if (curTime - (window.lastRankSyncTime || 0) > 15.0) {
+      window.lastRankSyncTime = curTime;
+      fetchTop10();
+    }
+
     drawDynamicDeepSpaceBackground(ctx, dt);
 
     if (curTime - lastCometSpawnCheck > 3.0) {
@@ -3583,14 +3589,17 @@ function safeGameLoop(now) {
         const baseSource = (allLeaderboardList && allLeaderboardList.length > 0) ? allLeaderboardList : top10List;
         const curScore = Math.floor(score);
 
-        // 내 등수(0-based index) 이분 탐색: O(log N)
+        // 내 등수(0-based index) 내림차순 이분 탐색: O(log N)
         let low = 0, high = baseSource.length;
         while (low < high) {
           const mid = (low + high) >>> 1;
-          if (baseSource[mid].score > curScore) low = mid + 1;
-          else high = mid;
+          if (baseSource[mid].score > curScore) {
+            low = mid + 1;
+          } else {
+            high = mid;
+          }
         }
-        const myRankIndex = low; // 0등부터 시작 (1위 = 0)
+        const myRankIndex = low; // 0등(1위) 기준
 
         // 7줄 윈도우 계산: row 5에 '내 등수', row 6에 '나보다 1단계 아래', row 0~4에 '나보다 위 5명'
         ctx.font = `10px ${FONT_FAMILY}`;
@@ -4263,7 +4272,39 @@ function safeGameLoop(now) {
         ctx.restore();
       }
 
-      // 8렙 / 16렙 첨부 이미지형 교차 톱니 아치 펄스 렌더링 (지속적인 형태
+      // [항목 7] 5개 반투명 전자기 펄스 스트림 렌더링
+      for (let i = 0; i < twinFieldBolts.length; i++) {
+        const fb = twinFieldBolts[i];
+        if (!fb || !Array.isArray(fb.streams)) continue;
+        const fadeAlpha = Math.max(0, 1.0 - (fb.elapsed / fb.totalDuration));
+
+        ctx.save();
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        for (let s = 0; s < fb.streams.length; s++) {
+          const st = fb.streams[s];
+          const pts = st.pts;
+          if (!pts || pts.length < 2) continue;
+
+          ctx.strokeStyle = st.color;
+          ctx.globalAlpha = fadeAlpha * 0.42;
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let p = 1; p < pts.length; p++) ctx.lineTo(pts[p].x, pts[p].y);
+          ctx.stroke();
+
+          ctx.strokeStyle = "#ffffff";
+          ctx.globalAlpha = fadeAlpha * 0.60;
+          ctx.lineWidth = 1.0;
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let p = 1; p < pts.length; p++) ctx.lineTo(pts[p].x, pts[p].y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
 
       if (currentBoss) currentBoss.draw(curTime);
       if (meteorManager) {
