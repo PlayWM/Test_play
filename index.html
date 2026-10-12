@@ -598,18 +598,13 @@ function drawVectorPlayer(c, type, color, scale = 1.0, flameHeight = 0, isMissil
     const startY = ty + 4;
     const endY = startY + flH;
 
-    // Gradient 캐시 팩토리 (매 프레임 생성 방지)
-    if (!window.thrusterGradCache) window.thrusterGradCache = {};
-    const cacheKeyOut = `${color}_${Math.round(flH)}`;
-    let fgOut = window.thrusterGradCache[cacheKeyOut];
-    if (!fgOut) {
-      fgOut = c.createLinearGradient(0, startY, 0, endY + 4);
-      fgOut.addColorStop(0, "rgba(255, 255, 255, 0.9)");
-      fgOut.addColorStop(0.2, color);
-      fgOut.addColorStop(0.7, "rgba(0, 150, 255, 0.3)");
-      fgOut.addColorStop(1, "rgba(0,0,0,0)");
-      window.thrusterGradCache[cacheKeyOut] = fgOut;
-    }
+    // 실시간 그라데이션 직접 렌더링 (메모리 누수 방지 및 GC 스파이크 차단)
+    const fgOut = c.createLinearGradient(0, startY, 0, endY + 4);
+    fgOut.addColorStop(0, "rgba(255, 255, 255, 0.9)");
+    fgOut.addColorStop(0.2, color);
+    fgOut.addColorStop(0.7, "rgba(0, 150, 255, 0.3)");
+    fgOut.addColorStop(1, "rgba(0,0,0,0)");
+
     c.fillStyle = fgOut;
     c.beginPath();
     c.moveTo(tx - tw/2, startY);
@@ -618,17 +613,13 @@ function drawVectorPlayer(c, type, color, scale = 1.0, flameHeight = 0, isMissil
     c.closePath();
     c.fill();
 
-    // 중심부 고열 코어 다중 Gradient 캐싱 (다채로운 효과 유지)
+    // 중심부 고열 코어 다중 Gradient
     const isRedCore = (isHeavy || safeFlame > 0);
-    const cacheKeyCore = `${isRedCore ? "RED" : "CYAN"}_${Math.round(flH * 0.6)}`;
-    let fgCore = window.thrusterGradCache[cacheKeyCore];
-    if (!fgCore) {
-      fgCore = c.createLinearGradient(0, startY, 0, startY + flH * 0.6);
-      fgCore.addColorStop(0, "#ffffff");
-      fgCore.addColorStop(0.4, isRedCore ? "#ff0044" : "#00ffff");
-      fgCore.addColorStop(1, "rgba(255, 255, 255, 0)");
-      window.thrusterGradCache[cacheKeyCore] = fgCore;
-    }
+    const fgCore = c.createLinearGradient(0, startY, 0, startY + flH * 0.6);
+    fgCore.addColorStop(0, "#ffffff");
+    fgCore.addColorStop(0.4, isRedCore ? "#ff0044" : "#00ffff");
+    fgCore.addColorStop(1, "rgba(255, 255, 255, 0)");
+
     c.fillStyle = fgCore;
     c.beginPath();
     c.moveTo(tx - tw * 0.25, startY);
@@ -1318,6 +1309,9 @@ class Player {
           });
         }
 
+        if (twinFieldBolts.length >= 3) {
+          twinFieldBolts.shift();
+        }
         twinFieldBolts.push({
           type: "ORB_EMP",
           x: spawnCenterX,
@@ -1858,17 +1852,21 @@ class StationaryMissileLaser {
         }
       }
 
-      if (this.reflectedShards.length > 0) {
-        for (let s = 0; s < this.reflectedShards.length; s++) {
+      if (this.reflectedShards && this.reflectedShards.length > 0) {
+        const shardCount = this.reflectedShards.length;
+        const enemyCount = enemiesList.length;
+        for (let s = 0; s < shardCount; s++) {
           const sh = this.reflectedShards[s];
-          for (let i = 0; i < enemiesList.length; i++) {
+          for (let i = 0; i < enemyCount; i++) {
             const e = enemiesList[i];
-            if (!e.isDead && e.hp > 0) {
-              const dSq = (e.x - sh.ex) * (e.x - sh.ex) + (e.y - sh.ey) * (e.y - sh.ey);
-              const hitR = e.radius + 15;
-              if (dSq <= hitR * hitR) {
-                applyDamageToEnemy(e, this.powerDmg * 0.7, "MISSILE_NEEDLE", true);
-              }
+            if (!e || e.isDead || e.hp <= 0) continue;
+            const hitR = e.radius + 15;
+            const dx = e.x - sh.ex;
+            if (Math.abs(dx) > hitR) continue;
+            const dy = e.y - sh.ey;
+            if (Math.abs(dy) > hitR) continue;
+            if (dx * dx + dy * dy <= hitR * hitR) {
+              applyDamageToEnemy(e, this.powerDmg * 0.7, "MISSILE_NEEDLE", true);
             }
           }
         }
