@@ -170,6 +170,45 @@ function triggerEnemyLightningShock(impactX, impactY, enemy) {
   });
 }
 
+// 3단계 프랙탈 분기 번개 생성 (10~50도 꺾임)
+function createBranchingLightning(sx, sy, baseAngle, totalLen) {
+  const stepLen = totalLen / 3;
+  const branches = [];
+  const rndRad = (minDeg, maxDeg) => {
+    const deg = minDeg + Math.random() * (maxDeg - minDeg);
+    return (deg * Math.PI) / 180 * (Math.random() < 0.5 ? 1 : -1);
+  };
+
+  // 1마디: 본체 -> 1차 꺾임 지점
+  const p1x = sx + Math.cos(baseAngle) * stepLen;
+  const p1y = sy + Math.sin(baseAngle) * stepLen;
+  branches.push({ p1: { x: sx, y: sy }, p2: { x: p1x, y: p1y }, step: 1 });
+
+  // 1차 분기: 2갈래로 분리 (각도 10~50도 꺾임)
+  const a2_1 = baseAngle + rndRad(10, 50);
+  const a2_2 = baseAngle + rndRad(10, 50);
+
+  const p2_1 = { x: p1x + Math.cos(a2_1) * stepLen, y: p1y + Math.sin(a2_1) * stepLen };
+  const p2_2 = { x: p1x + Math.cos(a2_2) * stepLen, y: p1y + Math.sin(a2_2) * stepLen };
+  branches.push({ p1: { x: p1x, y: p1y }, p2: p2_1, step: 2 });
+  branches.push({ p1: { x: p1x, y: p1y }, p2: p2_2, step: 2 });
+
+  // 2차 분기: p2_1은 다시 2개로 분리, p2_2는 1개로 단순 꺾임
+  const a3_1a = a2_1 + rndRad(10, 50);
+  const a3_1b = a2_1 + rndRad(10, 50);
+  const a3_2 = a2_2 + rndRad(10, 50);
+
+  const p3_1a = { x: p2_1.x + Math.cos(a3_1a) * stepLen, y: p2_1.y + Math.sin(a3_1a) * stepLen };
+  const p3_1b = { x: p2_1.x + Math.cos(a3_1b) * stepLen, y: p2_1.y + Math.sin(a3_1b) * stepLen };
+  const p3_2 = { x: p2_2.x + Math.cos(a3_2) * stepLen, y: p2_2.y + Math.sin(a3_2) * stepLen };
+
+  branches.push({ p1: p2_1, p2: p3_1a, step: 3 });
+  branches.push({ p1: p2_1, p2: p3_1b, step: 3 });
+  branches.push({ p1: p2_2, p2: p3_2, step: 3 });
+
+  return branches;
+}
+
 // =================================================================
 // 2. 국가 및 리더보드
 // =================================================================
@@ -466,7 +505,7 @@ function startBGMEngine() {
 // =================================================================
 const CONFIG = {
   BASE_PLAYER_SPEED: 10.5,
-  BASE_FIRE_INTERVAL: 0.324,
+  BASE_FIRE_INTERVAL: 0.463, // 트윈 비행기 총알 1렙 연사속도 약 30% 감속 (0.324 / 0.7)
   FIRE_RATE_REDUCTION: 0.05,
   MIN_SPAWN_INTERVAL: 0.05,
   MAX_SPAWN_INTERVAL: 0.30,
@@ -1237,31 +1276,30 @@ class Player {
     if ((this.pType === 2 || this.getDominantTrait() === "RATE") && this.fireRateStat >= 8) {
       this.lightningTimer += dt;
       const isLv16 = (this.fireRateStat >= 16);
-      const interval = isLv16 ? 1.5 : 2.0;
       const count = isLv16 ? 18 : 6;
       const fovDeg = isLv16 ? 100 : 60;
 
-      if (this.lightningTimer >= interval) {
+      // 4초에 1번씩 방출
+      if (this.lightningTimer >= 4.0) {
         this.lightningTimer = 0;
-        const maxDist = (this.radius * 2) * 3; // 내 비행기 높이 3배 거리 (~132px)
+        // 기존 높이 3배 대비 50% 늘어난 높이 4.5배 거리 (~198px)
+        const maxDist = (this.radius * 2) * 4.5;
         const startAng = -Math.PI / 2;
         const fovRad = (fovDeg * Math.PI) / 180;
 
         for (let i = 0; i < count; i++) {
           const ang = (startAng - fovRad / 2) + Math.random() * fovRad;
-          const targetDist = maxDist * (0.85 + Math.random() * 0.25);
-          const tx = this.x + Math.cos(ang) * targetDist;
-          const ty = (this.y - 20) + Math.sin(ang) * targetDist;
-          const pts = createLightningPoints(this.x, this.y - 20, tx, ty, 6, 12);
+          const totalDist = maxDist * (0.85 + Math.random() * 0.25);
+          const branches = createBranchingLightning(this.x, this.y - 20, ang, totalDist);
 
           twinFieldBolts.push({
-            pts: pts,
+            branches: branches,
             elapsed: 0.0,
-            totalDuration: 0.22,
-            dmg: this.powerStat * 2.5
+            totalDuration: 1.5, // 1.5초 지속
+            dmg: this.powerStat * 1.5
           });
         }
-        playTone(920, 0.16, "sawtooth", -350, 0.2);
+        playTone(920, 0.25, "sawtooth", -350, 0.2);
       }
     }
 
@@ -2487,24 +2525,30 @@ class Bullet {
     this.dmg = dmg; this.radius = radius;
     this.bulletType = bulletType;
     this.isBlackHoleTrigger = isBlackHoleTrigger;
+    this.lightningVariant = Math.floor(Math.random() * 5); // 0~4번 꺾임 형태 랜덤 지정
   }
   update(dt) { this.x += this.vx * (dt * 60); this.y += this.vy * (dt * 60); }
   draw() {
     if (this.bulletType === "DEFAULT") {
-      // 1. 기본 탄환: save/restore 없이 절대 좌표에 즉시 렌더링
       ctx.fillStyle = "#ffe600";
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
       ctx.fill();
-
     } else if (this.bulletType === "TWIN") {
-      // 2. 트윈 탄환: 총알 외형 삭제 및 구불구불한 절선 번개(Lightning Bolt) 렌더링
-      const pts = createLightningPoints(this.x, this.y + 11, this.x, this.y - 11, 5, 5);
+      // 5가지 꺾임 강도 프리셋 (세그먼트 수, 좌우 꺾임폭)
+      const variants = [
+        { seg: 5, disp: 7 },
+        { seg: 6, disp: 9 },
+        { seg: 6, disp: 11 },
+        { seg: 7, disp: 13 },
+        { seg: 7, disp: 15 }
+      ];
+      const v = variants[this.lightningVariant || 0];
+      const pts = createLightningPoints(this.x, this.y + 13, this.x, this.y - 13, v.seg, v.disp);
       ctx.save();
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
-      // 외곽 사이안 네온 글로우
       ctx.strokeStyle = "rgba(0, 245, 255, 0.45)";
       ctx.lineWidth = 2.4;
       ctx.beginPath();
@@ -2512,7 +2556,6 @@ class Bullet {
       for (let p = 1; p < pts.length; p++) ctx.lineTo(pts[p].x, pts[p].y);
       ctx.stroke();
 
-      // 고열 화이트 중심선
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 1.0;
       ctx.beginPath();
@@ -3896,17 +3939,21 @@ function safeGameLoop(now) {
         }
       }
 
-      // 8/16렙 확산 번개 적 피격 판정
+      // 8/16렙 확산 번개 적 피격 판정 (분기 끝점 및 중간 마디 판정)
       for (let fi = twinFieldBolts.length - 1; fi >= 0; fi--) {
         const fb = twinFieldBolts[fi];
-        const tipPt = fb.pts[fb.pts.length - 1];
-        for (let ei = enemies.length - 1; ei >= 0; ei--) {
-          const e = enemies[ei];
-          if (!e || e.isDead || e.hp <= 0) continue;
-          const dSq = (tipPt.x - e.x) * (tipPt.x - e.x) + (tipPt.y - e.y) * (tipPt.y - e.y);
-          if (dSq <= (e.radius + 15) * (e.radius + 15)) {
-            triggerEnemyLightningShock(e.x, e.y, e);
-            applyDamageToEnemy(e, fb.dmg, "TWIN");
+        if (fb.elapsed % 0.25 < dt) { // 0.25초 틱 주기로 지속 데미지
+          for (let b = 0; b < fb.branches.length; b++) {
+            const pt = fb.branches[b].p2;
+            for (let ei = enemies.length - 1; ei >= 0; ei--) {
+              const e = enemies[ei];
+              if (!e || e.isDead || e.hp <= 0) continue;
+              const dSq = (pt.x - e.x) * (pt.x - e.x) + (pt.y - e.y) * (pt.y - e.y);
+              if (dSq <= (e.radius + 16) * (e.radius + 16)) {
+                triggerEnemyLightningShock(e.x, e.y, e);
+                applyDamageToEnemy(e, fb.dmg * 0.4, "TWIN");
+              }
+            }
           }
         }
       }
@@ -4009,44 +4056,34 @@ function safeGameLoop(now) {
         ctx.restore();
       }
 
-      // 8렙 / 16렙 전방 확산 번개 렌더링
+      // 8렙 / 16렙 전방 확산 번개 렌더링 (마디 없는 3단계 프랙탈 분기 선형 드로잉)
       for (let i = 0; i < twinFieldBolts.length; i++) {
         const fb = twinFieldBolts[i];
-        const progress = Math.min(1.0, fb.elapsed / 0.08);
-        const fadeAlpha = Math.max(0, 1.0 - (fb.elapsed - 0.08) / (fb.totalDuration - 0.08));
-        const pts = fb.pts;
-        const totalSegs = pts.length - 1;
-        const visibleSegs = Math.max(1, Math.floor(totalSegs * progress));
-
+        const fadeAlpha = Math.max(0, 1.0 - (fb.elapsed / fb.totalDuration));
         ctx.save();
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
 
-        const startPt = pts[0];
-        const endPt = pts[visibleSegs];
-        const boltGrad = ctx.createLinearGradient(startPt.x, startPt.y, endPt.x, endPt.y);
-        boltGrad.addColorStop(0, `rgba(0, 245, 255, ${1.0 * fadeAlpha})`);
-        boltGrad.addColorStop(0.65, `rgba(0, 245, 255, ${0.45 * fadeAlpha})`);
-        boltGrad.addColorStop(1, `rgba(0, 245, 255, ${0.05 * fadeAlpha})`);
+        for (let b = 0; b < fb.branches.length; b++) {
+          const br = fb.branches[b];
+          // step 1(시작부 3.0px) -> step 2(2.0px) -> step 3(끝부분 1.0px 얇고 흐리게)
+          const w = (4.0 - br.step * 1.0);
+          const stepAlpha = (1.1 - br.step * 0.25) * fadeAlpha;
 
-        const coreGrad = ctx.createLinearGradient(startPt.x, startPt.y, endPt.x, endPt.y);
-        coreGrad.addColorStop(0, `rgba(255, 255, 255, ${1.0 * fadeAlpha})`);
-        coreGrad.addColorStop(0.5, `rgba(255, 255, 255, ${0.4 * fadeAlpha})`);
-        coreGrad.addColorStop(1, `rgba(255, 255, 255, 0)`);
+          ctx.strokeStyle = `rgba(0, 245, 255, ${Math.max(0, stepAlpha * 0.7)})`;
+          ctx.lineWidth = w * 1.6;
+          ctx.beginPath();
+          ctx.moveTo(br.p1.x, br.p1.y);
+          ctx.lineTo(br.p2.x, br.p2.y);
+          ctx.stroke();
 
-        ctx.strokeStyle = boltGrad;
-        ctx.lineWidth = 2.6;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let j = 1; j <= visibleSegs; j++) ctx.lineTo(pts[j].x, pts[j].y);
-        ctx.stroke();
-
-        ctx.strokeStyle = coreGrad;
-        ctx.lineWidth = 1.0;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let j = 1; j <= visibleSegs; j++) ctx.lineTo(pts[j].x, pts[j].y);
-        ctx.stroke();
+          ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(0, stepAlpha)})`;
+          ctx.lineWidth = Math.max(0.6, w * 0.5);
+          ctx.beginPath();
+          ctx.moveTo(br.p1.x, br.p1.y);
+          ctx.lineTo(br.p2.x, br.p2.y);
+          ctx.stroke();
+        }
         ctx.restore();
       }
 
