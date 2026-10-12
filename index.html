@@ -1219,10 +1219,16 @@ class Player {
       if (this.missileLaserTimer >= laserInterval) {
         this.missileLaserTimer = 0;
         const lDmg = Math.max(1.0, this.getMissileDamage() * 0.5);
-        stationaryLasers.push(new StationaryMissileLaser(this.x, this.y - 20, lDmg, this.missileStat));
-        // 분신 활성화 시 분신 위치(x + 42)에서도 보조 레이저 발사
+        const rad7_5 = (7.5 * Math.PI) / 180; // 7.5도 라디안 변환 (총 15도 전개)
+
+        // 본체 좌우 2줄기 발사 (-7.5도, +7.5도)
+        stationaryLasers.push(new StationaryMissileLaser(this.x, this.y - 20, lDmg, this.missileStat, -rad7_5));
+        stationaryLasers.push(new StationaryMissileLaser(this.x, this.y - 20, lDmg, this.missileStat, rad7_5));
+
+        // 분신 활성화 시 분신 위치(x + 42)에서도 좌우 2줄기 발사
         if (this.clonePlaneTimer > 0) {
-          stationaryLasers.push(new StationaryMissileLaser(this.x + 42, this.y - 20, lDmg, this.missileStat));
+          stationaryLasers.push(new StationaryMissileLaser(this.x + 42, this.y - 20, lDmg, this.missileStat, -rad7_5));
+          stationaryLasers.push(new StationaryMissileLaser(this.x + 42, this.y - 20, lDmg, this.missileStat, rad7_5));
         }
         playTone(740, 0.15, "triangle", -200, 0.1);
       }
@@ -1546,9 +1552,10 @@ class HomingMissile {
   }
 }
 class StationaryMissileLaser {
-  constructor(x, y, powerDmg, missileLv) {
+  constructor(x, y, powerDmg, missileLv, angleOffsetRad = 0) {
     this.x = x;
     this.startY = y;
+    this.angleOffsetRad = angleOffsetRad; // 좌우 7.5도 오프셋 각도
     this.powerDmg = powerDmg;
     this.missileLv = missileLv;
     this.life = 0.45;
@@ -1619,14 +1626,17 @@ class StationaryMissileLaser {
       return;
     }
 
+    const baseTargetX = this.x + Math.tan(this.angleOffsetRad) * this.startY;
+
     if (!closerEnemy) {
-      this.path.push({ x: this.x, y: 0 });
+      this.path.push({ x: baseTargetX, y: 0 });
       return;
     }
 
     let t1 = closerEnemy;
-    this.path.push({ x: this.x, y: t1.y });
-    if (Math.abs(this.x - t1.x) <= t1.radius + 12) {
+    const t1X = this.x + Math.tan(this.angleOffsetRad) * (this.startY - t1.y);
+    this.path.push({ x: t1X, y: t1.y });
+    if (Math.abs(t1X - t1.x) <= t1.radius + 12) {
       this.hitEnemies.push({ enemy: t1, bendCount: 0 });
     }
 
@@ -3416,10 +3426,8 @@ function safeGameLoop(now) {
       twinFieldBolts[i].elapsed += dt;
       if (twinFieldBolts[i].elapsed >= twinFieldBolts[i].totalDuration) twinFieldBolts.splice(i, 1);
     }
-    for (let i = twinFieldBolts.length - 1; i >= 0; i--) {
-      twinFieldBolts[i].elapsed += dt;
-      if (twinFieldBolts[i].elapsed >= twinFieldBolts[i].totalDuration) twinFieldBolts.splice(i, 1);
-    }
+
+    if (gameState === 0) {
 
     if (gameState === 0) {
       drawGalaxyBackground(ctx, curTime);
