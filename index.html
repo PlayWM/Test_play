@@ -273,26 +273,34 @@ function fetchTop10() {
           const rawItems = Object.values(data).filter(v => v && v.name && v.score !== undefined);
           
           // 최근 3일 일일 플레이 횟수 집계
-          const now = new Date();
-          const getDayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-          const getLabel = (d) => `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
-          
-          const d0 = new Date(now);
-          const d1 = new Date(now); d1.setDate(d1.getDate() - 1);
-          const d2 = new Date(now); d2.setDate(d2.getDate() - 2);
-          
-          const k0 = getDayKey(d0), k1 = getDayKey(d1), k2 = getDayKey(d2);
-          let c0 = 0, c1 = 0, c2 = 0;
-          
-          rawItems.forEach(item => {
-            if (item.time) {
-              const itemDate = new Date(item.time * 1000);
-              const ik = getDayKey(itemDate);
-              if (ik === k0) c0++;
-              else if (ik === k1) c1++;
-              else if (ik === k2) c2++;
-            }
-          });
+          if (gameState === 0) {
+            const now = new Date();
+            const getDayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const getLabel = (d) => `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+            
+            const d0 = new Date(now);
+            const d1 = new Date(now); d1.setDate(d1.getDate() - 1);
+            const d2 = new Date(now); d2.setDate(d2.getDate() - 2);
+            
+            const k0 = getDayKey(d0), k1 = getDayKey(d1), k2 = getDayKey(d2);
+            let c0 = 0, c1 = 0, c2 = 0;
+            
+            rawItems.forEach(item => {
+              if (item.time) {
+                const itemDate = new Date(item.time * 1000);
+                const ik = getDayKey(itemDate);
+                if (ik === k0) c0++;
+                else if (ik === k1) c1++;
+                else if (ik === k2) c2++;
+              }
+            });
+            
+            dailyPlayCounts = {
+              day2: { date: getLabel(d2), count: c2 },
+              day1: { date: getLabel(d1), count: c1 },
+              day0: { date: `${getLabel(d0)} (오늘)`, count: c0 }
+            };
+          }
           
           dailyPlayCounts = {
             day2: { date: getLabel(d2), count: c2 },
@@ -2582,7 +2590,7 @@ class ExplosionFX {
       ctx.lineWidth = 2.0;
       ctx.beginPath();
       ctx.moveTo(this.x - len, this.y); ctx.lineTo(this.x + len, this.y);
-      ctx.moveTo(this.x, this.y - len); ctx.lineTo(this.x + len, this.y);
+      ctx.moveTo(this.x, this.y - len); ctx.lineTo(this.x, this.y + len);
       ctx.stroke();
     } else if (this.fxType === 3) {
       this.particles.forEach(p => {
@@ -3528,10 +3536,13 @@ function handlePointerDown(e) {
     minigameFinishTimestamp = performance.now() / 1000;
     playTone(523, 0.15, "triangle", 0, 0.15);
   } else if (gameState === 3) {
-    const btnRect = { x: LOGICAL_WIDTH / 2 - 90, y: LOGICAL_HEIGHT * 0.3 + 125, w: 180, h: 42 };
+    const popY = LOGICAL_HEIGHT * 0.3;
+    const btnRect = { x: LOGICAL_WIDTH / 2 - 90, y: popY + 140, w: 180, h: 42 };
     if (coords.x >= btnRect.x && coords.x <= btnRect.x + btnRect.w && coords.y >= btnRect.y && coords.y <= btnRect.y + btnRect.h) {
       const enteredName = nameInput.value.trim();
-      if (enteredName.length > 0) uploadScore(enteredName, score);
+      // 이름 미입력 시 "Player 1" 자동 적용
+      const finalName = enteredName.length > 0 ? enteredName : "Player 1";
+      uploadScore(finalName, score);
       nameInputOverlay.style.display = "none";
       setSelectScreenMode();
       gameState = 0;
@@ -3736,7 +3747,7 @@ function safeGameLoop(now) {
           window.rankNeonFlashTimer = curTime;
         }
         window.prevTrackedRankIndex = myRankIndex;
-        const isNeonFlashing = (curTime - (window.rankNeonFlashTimer || 0)) < 0.3;
+        const isNeonFlashing = (curTime - (window.rankNeonFlashTimer || 0)) < 0.5;
 
         // 30% 정도 투명한 다크 블루 배경 (투명도 70%)
         ctx.fillStyle = "rgba(8, 14, 28, 0.70)";
@@ -5004,7 +5015,7 @@ function safeGameLoop(now) {
       const popY = LOGICAL_HEIGHT * 0.3;
       ctx.save();
       ctx.fillStyle = "#121626";
-      drawRoundRect(ctx, LOGICAL_WIDTH / 2 - 160, popY - 20, 320, 220, 14);
+      drawRoundRect(ctx, LOGICAL_WIDTH / 2 - 160, popY - 20, 320, 240, 14);
       ctx.fill();
       ctx.strokeStyle = "#ff0080";
       ctx.lineWidth = 2;
@@ -5018,12 +5029,17 @@ function safeGameLoop(now) {
       ctx.font = `16px ${FONT_FAMILY}`;
       ctx.fillText(`FINAL SCORE: ${score}`, LOGICAL_WIDTH / 2, popY + 45);
 
+      // 전체 중 내 순위 표시
       ctx.fillStyle = "#00f5ff";
-      drawRoundRect(ctx, LOGICAL_WIDTH / 2 - 90, popY + 125, 180, 42, 8);
+      ctx.font = `bold 14px ${FONT_FAMILY}`;
+      ctx.fillText(`RANK: #${currentSessionRank} / ${totalRankCount}`, LOGICAL_WIDTH / 2, popY + 70);
+
+      ctx.fillStyle = "#00f5ff";
+      drawRoundRect(ctx, LOGICAL_WIDTH / 2 - 90, popY + 140, 180, 42, 8);
       ctx.fill();
       ctx.fillStyle = "#080c18";
       ctx.font = `bold 15px ${FONT_FAMILY}`;
-      ctx.fillText("SUBMIT & RESTART", LOGICAL_WIDTH / 2, popY + 151);
+      ctx.fillText("SUBMIT & RESTART", LOGICAL_WIDTH / 2, popY + 166);
       ctx.restore();
     }
   } catch(err) {
@@ -5033,17 +5049,30 @@ function safeGameLoop(now) {
   requestAnimationFrame(safeGameLoop);
 }
 
+let currentSessionRank = 1;
+let totalRankCount = 1;
+
 function handleGameOver() {
   setTimeout(() => {
     gameState = 3;
-    const isTop10Eligible = score > 0 && (top10List.length < 10 || score > top10List[top10List.length - 1].score);
-    if (isTop10Eligible) {
-      nameInputOverlay.style.display = "block";
-      nameInput.value = "";
-      nameInput.focus();
-    } else {
-      nameInputOverlay.style.display = "none";
+
+    // 전체 랭킹에서 내 순위 계산
+    const baseSource = (allLeaderboardList && allLeaderboardList.length > 0) ? allLeaderboardList : top10List;
+    const curScore = Math.floor(score);
+    let low = 0, high = baseSource.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (baseSource[mid].score > curScore) low = mid + 1;
+      else high = mid;
     }
+    currentSessionRank = low + 1;
+    totalRankCount = Math.max(1, baseSource.length + 1);
+
+    // 탑 10 여부와 무관하게 이름 입력창 상시 오픈
+    nameInputOverlay.style.display = "block";
+    nameInput.value = "";
+    nameInput.placeholder = "ENTER PILOT NAME";
+    nameInput.focus();
   }, 800);
 }
 
