@@ -262,19 +262,51 @@ window.addEventListener("pagehide", () => {
 
 let top10List = [];
 let allLeaderboardList = []; // Firebase에 등록된 전체 랭킹 목록 저장
+let dailyPlayCounts = { day0: { date: "", count: 0 }, day1: { date: "", count: 0 }, day2: { date: "", count: 0 } };
+
 function fetchTop10() {
   try {
     fetch(FIREBASE_URL)
       .then(r => r.json())
       .then(data => {
         if (data) {
-          const items = Object.values(data).filter(v => v && v.name && v.score !== undefined);
-          items.sort((a, b) => b.score - a.score);
-          allLeaderboardList = items.map(v => ({
+          const rawItems = Object.values(data).filter(v => v && v.name && v.score !== undefined);
+          
+          // 최근 3일 일일 플레이 횟수 집계
+          const now = new Date();
+          const getDayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          const getLabel = (d) => `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+          
+          const d0 = new Date(now);
+          const d1 = new Date(now); d1.setDate(d1.getDate() - 1);
+          const d2 = new Date(now); d2.setDate(d2.getDate() - 2);
+          
+          const k0 = getDayKey(d0), k1 = getDayKey(d1), k2 = getDayKey(d2);
+          let c0 = 0, c1 = 0, c2 = 0;
+          
+          rawItems.forEach(item => {
+            if (item.time) {
+              const itemDate = new Date(item.time * 1000);
+              const ik = getDayKey(itemDate);
+              if (ik === k0) c0++;
+              else if (ik === k1) c1++;
+              else if (ik === k2) c2++;
+            }
+          });
+          
+          dailyPlayCounts = {
+            day2: { date: getLabel(d2), count: c2 },
+            day1: { date: getLabel(d1), count: c1 },
+            day0: { date: `${getLabel(d0)} (오늘)`, count: c0 }
+          };
+
+          rawItems.sort((a, b) => b.score - a.score);
+          allLeaderboardList = rawItems.map(v => ({
             name: sanitizeText(v.name),
             score: Math.floor(Number(v.score) || 0)
           }));
-          top10List = items.slice(0, 10).map(v => {            let shipName = "";
+          top10List = rawItems.slice(0, 10).map(v => {
+            let shipName = "";
             if (v.ship === "Legend" || v.pType === 4) shipName = "Legend";
             else if (v.ship === "Power" || v.pType === 1) shipName = "Power";
             else if (v.ship === "Missile" || v.ship === "Speed" || v.pType === 0) shipName = "Missile";
@@ -2942,11 +2974,16 @@ function safeKillEnemy(e, customColor="#ffe600", isHedgehogKill=false) {
   if (!isHedgehogKill) {
     const isBuffActive = (player && (player.shieldRemain > 0 || player.laserWeaponTimer > 0 || player.clonePlaneTimer > 0));
     
-    // [기능 2] 180초부터 매 30초마다 10%씩 게이지 충전량 감소
+    // [기능 2] 180초부터 매 30초마다 10%씩 게이지 충전량 감소 (3~6분 구간 20% 추가 감축)
     let penaltyMultiplier = 1.0;
     if (typeof inGameElapsedTime === "number" && inGameElapsedTime >= 180.0) {
       const step = Math.floor((inGameElapsedTime - 180.0) / 30.0) + 1;
       penaltyMultiplier = Math.max(0.1, 1.0 - step * 0.10); // 최대 90% 감소 제한
+
+      // 3~6분(180초~360초) 구간 충전 횟수 20% 감소 (0.8배)
+      if (inGameElapsedTime <= 360.0) {
+        penaltyMultiplier *= 0.8;
+      }
     }
 
     const baseGain = isBuffActive ? (CONFIG.BASE_GAUGE_PER_KILL * 0.3) : CONFIG.BASE_GAUGE_PER_KILL;
@@ -3417,10 +3454,10 @@ function handlePointerDown(e) {
 
   if (gameState === 0) {
     if (coords.x >= 35 && coords.x <= 415) {
-      if (coords.y >= 165 && coords.y <= 240) startBattle(0);
-      else if (coords.y >= 250 && coords.y <= 325) startBattle(1);
-      else if (coords.y >= 335 && coords.y <= 410) startBattle(2);
-      else if (coords.y >= 420 && coords.y <= 495) startBattle(3);
+      if (coords.y >= 140 && coords.y <= 215) startBattle(0);
+      else if (coords.y >= 225 && coords.y <= 300) startBattle(1);
+      else if (coords.y >= 310 && coords.y <= 385) startBattle(2);
+      else if (coords.y >= 395 && coords.y <= 470) startBattle(3);
     }
   } else if (gameState === 1 && player && player.isAlive && !playerDeathCinematic.active) {
     if (hedgehogLauncher.timeStopTimer <= 0) {
@@ -3774,165 +3811,204 @@ function safeGameLoop(now) {
 
         ctx.save();
         ctx.fillStyle = "#00f5ff";
-        ctx.font = `bold 28px ${FONT_FAMILY}`;
+        ctx.font = `bold 26px ${FONT_FAMILY}`;
         ctx.textAlign = "center";
-        ctx.fillText("NEON FLIGHT: OVERDRIVE", LOGICAL_WIDTH / 2, 60);
+        ctx.fillText("NEON FLIGHT: OVERDRIVE", LOGICAL_WIDTH / 2, 55);
         ctx.restore();
 
         ctx.fillStyle = "#a5c0e0";
-      ctx.font = `13px ${FONT_FAMILY}`;
-      ctx.textAlign = "center";
-      ctx.fillText("CHOOSE YOUR FIGHTER", LOGICAL_WIDTH / 2, 95);
+        ctx.font = `12px ${FONT_FAMILY}`;
+        ctx.textAlign = "center";
+        ctx.fillText("CHOOSE YOUR FIGHTER", LOGICAL_WIDTH / 2, 88);
 
-      if (curTime - lastRandomSwitch >= 0.5) {
-        lastRandomSwitch = curTime;
-        randomCardDesign = Math.floor(Math.random() * 4);
-      }
-      if (curTime - lastRollTime >= 0.175) {
-        lastRollTime = curTime;
-        const bStats = generateBalancedStats();
-        rollP = bStats.p; rollM = bStats.m; rollR = bStats.r;
-      }
+        if (curTime - lastRandomSwitch >= 0.5) {
+          lastRandomSwitch = curTime;
+          randomCardDesign = Math.floor(Math.random() * 4);
+        }
+        if (curTime - lastRollTime >= 0.175) {
+          lastRollTime = curTime;
+          const bStats = generateBalancedStats();
+          rollP = bStats.p; rollM = bStats.m; rollR = bStats.r;
+        }
 
-      const cards = [
-        { name: "MISSILE", p: 1, m: 5, r: 1, bdr: "#00f5ff", y: 165, img: 0, sub: "HOMING MISSILE SPECIALIST" },
-        { name: "POWER", p: 5, m: 1, r: 1, bdr: "#ff2244", y: 250, img: 1, sub: "BLACK HOLE & HEAVY CANNON" },
-        { name: "TWIN", p: 1, m: 1, r: 5, bdr: "#00ff66", y: 335, img: 2, sub: "LIGHTNING ORB & RAPID FIRE" },
-        { name: "RANDOM", p: rollP, m: rollM, r: rollR, bdr: "#d000ff", y: 420, img: randomCardDesign, sub: "10% CHANCE OF LEGEND SHIP" }
-      ];
+        // 비행기 선택 카드 위치 25px 상향 조정
+        const cards = [
+          { name: "MISSILE", p: 1, m: 5, r: 1, bdr: "#00f5ff", y: 140, img: 0, sub: "HOMING MISSILE SPECIALIST" },
+          { name: "POWER", p: 5, m: 1, r: 1, bdr: "#ff2244", y: 225, img: 1, sub: "BLACK HOLE & HEAVY CANNON" },
+          { name: "TWIN", p: 1, m: 1, r: 5, bdr: "#00ff66", y: 310, img: 2, sub: "LIGHTNING ORB & RAPID FIRE" },
+          { name: "RANDOM", p: rollP, m: rollM, r: rollR, bdr: "#d000ff", y: 395, img: randomCardDesign, sub: "10% CHANCE OF LEGEND SHIP" }
+        ];
 
-      for (let i = 0; i < cards.length; i++) {
-        const c = cards[i];
-        ctx.save();
-        ctx.fillStyle = "rgba(12, 18, 38, 0.78)";
-        drawRoundRect(ctx, 35, c.y, LOGICAL_WIDTH - 70, 75, 12);
-        ctx.fill();
-
-        ctx.strokeStyle = c.bdr;
-        ctx.lineWidth = 1.8;
-        ctx.stroke();
-
-        // 미사일형(i === 0)과 트윈형(i === 2) 오른쪽 끝 2배 크기 & 반짝이는 RENEWAL 뱃지
-        if (i === 0 || i === 2) {
+        for (let i = 0; i < cards.length; i++) {
+          const c = cards[i];
           ctx.save();
-          const badgeX = LOGICAL_WIDTH - 55;
-          const badgeY = c.y + 28;
-          // 고속 반짝임(10Hz) + 점멸 펄스
-          const sparkle = Math.sin(curTime * 10.0) * 0.4 + 0.6;
-          const isFlash = Math.floor(curTime * 8) % 2 === 0;
-
-          ctx.translate(badgeX, badgeY);
-          ctx.rotate((30 * Math.PI) / 180);
-
-          ctx.shadowBlur = isFlash ? 18 : 8;
-          ctx.shadowColor = (i === 0) ? "#00f5ff" : "#00ff66";
-          ctx.fillStyle = isFlash ? "rgba(20, 35, 60, 0.95)" : `rgba(10, 18, 32, ${sparkle})`;
-          ctx.strokeStyle = isFlash ? "#ffffff" : ((i === 0) ? "#00f5ff" : "#00ff66");
-          ctx.lineWidth = isFlash ? 2.8 : 2.0;
-
-          // 크기 2배 (가로 96, 세로 36, 폰트 14px)
-          drawRoundRect(ctx, -48, -18, 96, 36, 6);
+          ctx.fillStyle = "rgba(12, 18, 38, 0.78)";
+          drawRoundRect(ctx, 35, c.y, LOGICAL_WIDTH - 70, 75, 12);
           ctx.fill();
+
+          ctx.strokeStyle = c.bdr;
+          ctx.lineWidth = 1.8;
           ctx.stroke();
 
-          ctx.fillStyle = isFlash ? "#ffe600" : "#ffffff";
-          ctx.font = `bold 14px ${FONT_FAMILY}`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText("RENEWAL", 0, 0);
+          // RENEWAL 뱃지: 폰트 15px로 1포인트 확대
+          if (i === 0 || i === 2) {
+            ctx.save();
+            const badgeX = LOGICAL_WIDTH - 55;
+            const badgeY = c.y + 28;
+            const sparkle = Math.sin(curTime * 10.0) * 0.4 + 0.6;
+            const isFlash = Math.floor(curTime * 8) % 2 === 0;
+
+            ctx.translate(badgeX, badgeY);
+            ctx.rotate((30 * Math.PI) / 180);
+
+            ctx.shadowBlur = isFlash ? 18 : 8;
+            ctx.shadowColor = (i === 0) ? "#00f5ff" : "#00ff66";
+            ctx.fillStyle = isFlash ? "rgba(20, 35, 60, 0.95)" : `rgba(10, 18, 32, ${sparkle})`;
+            ctx.strokeStyle = isFlash ? "#ffffff" : ((i === 0) ? "#00f5ff" : "#00ff66");
+            ctx.lineWidth = isFlash ? 2.8 : 2.0;
+
+            drawRoundRect(ctx, -48, -18, 96, 36, 6);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = isFlash ? "#ffe600" : "#ffffff";
+            ctx.font = `bold 15px ${FONT_FAMILY}`; // 14px -> 15px 확대
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("RENEWAL", 0, 0);
+            ctx.restore();
+          }
+
+          ctx.save();
+          ctx.translate(75, c.y + 38);
+          drawVectorPlayer(ctx, c.img, c.bdr, 0.9, Math.sin(curTime * 10) * 3);
+          ctx.restore();
+
+          ctx.textAlign = "left";
+          ctx.fillStyle = "#fff";
+          ctx.font = `bold 17px ${FONT_FAMILY}`;
+          ctx.fillText(c.name, 115, c.y + 20);
+
+          ctx.font = `bold 10px ${FONT_FAMILY}`;
+          ctx.fillStyle = "#00f5ff";
+          ctx.fillText(c.sub, 115, c.y + 35);
+
+          const maxVal = Math.max(c.p, c.m, c.r);
+          const isMaxP = (c.p === maxVal);
+          const isMaxM = (c.m === maxVal && !isMaxP);
+          const isMaxR = (c.r === maxVal && !isMaxP && !isMaxM);
+
+          let xOffset = 115;
+          const renderStat = (label, val, isHigh) => {
+            ctx.font = isHigh ? `bold 14px ${FONT_FAMILY}` : `12px ${FONT_FAMILY}`;
+            ctx.fillStyle = isHigh ? "#ffe600" : "#a0b0c8";
+            const txtStr = `${label} ${val}`;
+            ctx.fillText(txtStr, xOffset, c.y + 58);
+            xOffset += ctx.measureText(txtStr).width + 8;
+            ctx.font = `12px ${FONT_FAMILY}`;
+            ctx.fillStyle = "#4a5a70";
+            ctx.fillText("|", xOffset, c.y + 58);
+            xOffset += 10;
+          };
+
+          renderStat("PWR", c.p, isMaxP);
+          renderStat("MSL", c.m, isMaxM);
+          ctx.font = isMaxR ? `bold 14px ${FONT_FAMILY}` : `12px ${FONT_FAMILY}`;
+          ctx.fillStyle = isMaxR ? "#ffe600" : "#a0b0c8";
+          ctx.fillText(`RATE ${c.r}`, xOffset, c.y + 58);
           ctx.restore();
         }
 
+        // [추가] 최근 3일간 일일 플레이 횟수 표 (Y: 480 ~ 534)
+        const statsBoxY = 480;
         ctx.save();
-        ctx.translate(75, c.y + 38);
-        drawVectorPlayer(ctx, c.img, c.bdr, 0.9, Math.sin(curTime * 10) * 3);
+        ctx.fillStyle = "rgba(10, 16, 32, 0.88)";
+        drawRoundRect(ctx, 35, statsBoxY, LOGICAL_WIDTH - 70, 54, 8);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(0, 245, 255, 0.4)";
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#00f5ff";
+        ctx.font = `bold 10px ${FONT_FAMILY}`;
+        ctx.fillText("RECENT 3 DAYS PLAY COUNT", 45, statsBoxY + 16);
+
+        // 3분할 열 (그리드 구분선 및 데이터)
+        const colW = (LOGICAL_WIDTH - 70) / 3;
+        const days = [dailyPlayCounts.day2, dailyPlayCounts.day1, dailyPlayCounts.day0];
+
+        for (let di = 0; di < 3; di++) {
+          const cx = 35 + colW * di + colW / 2;
+          ctx.textAlign = "center";
+          
+          // 날짜 레이블
+          ctx.fillStyle = (di === 2) ? "#ffe600" : "#94a3b8";
+          ctx.font = `10px ${FONT_FAMILY}`;
+          ctx.fillText(days[di].date || "-", cx, statsBoxY + 31);
+          
+          // 횟수
+          ctx.fillStyle = (di === 2) ? "#00f5ff" : "#ffffff";
+          ctx.font = `bold 12px ${FONT_FAMILY}`;
+          ctx.fillText(`${days[di].count}회`, cx, statsBoxY + 46);
+
+          if (di < 2) {
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+            ctx.beginPath();
+            ctx.moveTo(35 + colW * (di + 1), statsBoxY + 22);
+            ctx.lineTo(35 + colW * (di + 1), statsBoxY + 48);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+
+        // 글로벌 랭킹 보드 (Y: 546으로 위치 조정)
+        const t10Y = 546;
+        ctx.save();
+        ctx.fillStyle = "rgba(10, 15, 32, 0.85)";
+        drawRoundRect(ctx, 35, t10Y, LOGICAL_WIDTH - 70, 185, 10);
+        ctx.fill();
+        ctx.strokeStyle = "#00f5ff";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = "#00f5ff";
+        ctx.font = `bold 13px ${FONT_FAMILY}`;
+        ctx.textAlign = "center";
+        ctx.fillText("★ GLOBAL TOP 10 PLAYERS ★", LOGICAL_WIDTH / 2, t10Y + 18);
+
+        ctx.font = `bold 12px ${FONT_FAMILY}`;
+        if (top10List.length === 0) {
+          ctx.fillStyle = "#a0b0c8";
+          ctx.fillText("WAITING FOR RECORDS...", LOGICAL_WIDTH / 2, t10Y + 90);
+        } else {
+          const showLen = Math.min(10, top10List.length);
+          for (let idx = 0; idx < showLen; idx++) {
+            const item = top10List[idx];
+            const rowY = Math.round(t10Y + 34 + idx * 15);
+            
+            ctx.textAlign = "left";
+            ctx.fillStyle = idx === 0 ? "#ffe600" : (idx < 3 ? "#00f5ff" : "#ffffff");
+            ctx.fillText(`${idx + 1}. [${item.country}] ${item.name}`, 44, rowY);
+            
+            ctx.textAlign = "right";
+            const shipLabel = item.ship ? `${item.ship}  ` : "";
+            ctx.fillText(`${shipLabel}${item.score} PTS`, LOGICAL_WIDTH - 44, rowY);
+          }
+        }
+
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#00f5ff";
+        ctx.font = `bold 12px ${FONT_FAMILY}`;
+        ctx.fillText(`PLAYING NOW: ${activePlayerCount} PILOT${activePlayerCount > 1 ? "S" : ""}`, LOGICAL_WIDTH - 35, t10Y + 204);
+
         ctx.restore();
 
         ctx.textAlign = "left";
-        ctx.fillStyle = "#fff";
-        ctx.font = `bold 17px ${FONT_FAMILY}`;
-        ctx.fillText(c.name, 115, c.y + 20);
-
-        ctx.font = `bold 10px ${FONT_FAMILY}`;
-        ctx.fillStyle = "#00f5ff";
-        ctx.fillText(c.sub, 115, c.y + 35);
-
-        const maxVal = Math.max(c.p, c.m, c.r);
-        const isMaxP = (c.p === maxVal);
-        const isMaxM = (c.m === maxVal && !isMaxP);
-        const isMaxR = (c.r === maxVal && !isMaxP && !isMaxM);
-
-        let xOffset = 115;
-        const renderStat = (label, val, isHigh) => {
-          ctx.font = isHigh ? `bold 14px ${FONT_FAMILY}` : `12px ${FONT_FAMILY}`;
-          ctx.fillStyle = isHigh ? "#ffe600" : "#a0b0c8";
-          const txtStr = `${label} ${val}`;
-          ctx.fillText(txtStr, xOffset, c.y + 58);
-          xOffset += ctx.measureText(txtStr).width + 8;
-          ctx.font = `12px ${FONT_FAMILY}`;
-          ctx.fillStyle = "#4a5a70";
-          ctx.fillText("|", xOffset, c.y + 58);
-          xOffset += 10;
-        };
-
-        renderStat("PWR", c.p, isMaxP);
-        renderStat("MSL", c.m, isMaxM);
-        ctx.font = isMaxR ? `bold 14px ${FONT_FAMILY}` : `12px ${FONT_FAMILY}`;
-        ctx.fillStyle = isMaxR ? "#ffe600" : "#a0b0c8";
-        ctx.fillText(`RATE ${c.r}`, xOffset, c.y + 58);
-        ctx.restore();
-      }
-
-      const t10Y = 505;
-      ctx.save();
-      ctx.fillStyle = "rgba(10, 15, 32, 0.85)";
-      drawRoundRect(ctx, 35, t10Y, LOGICAL_WIDTH - 70, 185, 10);
-      ctx.fill();
-      ctx.strokeStyle = "#00f5ff";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      ctx.fillStyle = "#00f5ff";
-      ctx.font = `bold 13px ${FONT_FAMILY}`;
-      ctx.textAlign = "center";
-      ctx.fillText("★ GLOBAL TOP 10 PLAYERS ★", LOGICAL_WIDTH / 2, t10Y + 18);
-
-      ctx.font = `bold 12px ${FONT_FAMILY}`;
-      if (top10List.length === 0) {
-        ctx.fillStyle = "#a0b0c8";
-        ctx.fillText("WAITING FOR RECORDS...", LOGICAL_WIDTH / 2, t10Y + 90);
-      } else {
-        const showLen = Math.min(10, top10List.length);
-        for (let idx = 0; idx < showLen; idx++) {
-          const item = top10List[idx];
-          const rowY = Math.round(t10Y + 34 + idx * 15);
-          
-          // 1. 순위 및 유저 이름 (최대 너비 보장)
-          ctx.textAlign = "left";
-          ctx.fillStyle = idx === 0 ? "#ffe600" : (idx < 3 ? "#00f5ff" : "#ffffff");
-          ctx.fillText(`${idx + 1}. [${item.country}] ${item.name}`, 44, rowY);
-          
-          // 2. 비행기 정보 및 점수 (우측 정렬)
-          ctx.textAlign = "right";
-          const shipLabel = item.ship ? `${item.ship}  ` : "";
-          ctx.fillText(`${shipLabel}${item.score} PTS`, LOGICAL_WIDTH - 44, rowY);
-        }
-      }
-
-      // 점수판 우측 하단 밖으로 위치 이동 (박스 밑면 690px 아래인 t10Y + 204에 렌더링)
-      ctx.textAlign = "right";
-      ctx.fillStyle = "#00f5ff";
-      ctx.font = `bold 12px ${FONT_FAMILY}`;
-      ctx.fillText(`PLAYING NOW: ${activePlayerCount} PILOT${activePlayerCount > 1 ? "S" : ""}`, LOGICAL_WIDTH - 35, t10Y + 204);
-
-      ctx.restore();
-
-      ctx.textAlign = "left";
-      ctx.fillStyle = "#70809b";
-      ctx.font = `bold 11px ${FONT_FAMILY}`;
-      ctx.fillText(VERSION_STR, 10, LOGICAL_HEIGHT - 12);
-
-    } else if (gameState === 4) {
+        ctx.fillStyle = "#70809b";
+        ctx.font = `bold 11px ${FONT_FAMILY}`;
+        ctx.fillText(VERSION_STR, 10, LOGICAL_HEIGHT - 12);
+      } else if (gameState === 4) {
       const elapsedShowcase = curTime - legendShowcaseStartTime;
       const remainSec = Math.max(0, (3.0 - elapsedShowcase).toFixed(1));
       const cx = LOGICAL_WIDTH / 2;
