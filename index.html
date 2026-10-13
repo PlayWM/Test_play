@@ -185,66 +185,6 @@ function createLightningPoints(sx, sy, tx, ty, segments = 5, maxDisp = 9) {
   return pts;
 }
 
-// [신규] 날카롭게 꺾이는 세그먼트 생성 (꺾임 관절 점 뭉침 없는 단일 세그먼트)
-function generateJaggedBranch(sx, sy, targetX, targetY, segCount) {
-  const pts = [{ x: sx, y: sy }];
-  const dx = (targetX - sx) / segCount;
-  const dy = (targetY - sy) / segCount;
-  const baseAngle = Math.atan2(targetY - sy, targetX - sx);
-  const dist = Math.hypot(targetX - sx, targetY - sy);
-  const perpAngle = baseAngle + Math.PI / 2;
-
-  for (let i = 1; i < segCount; i++) {
-    const jitter = (Math.random() - 0.5) * (dist * 0.45);
-    const px = sx + dx * i + Math.cos(perpAngle) * jitter;
-    const py = sy + dy * i + Math.sin(perpAngle) * jitter;
-    pts.push({ x: px, y: py });
-  }
-  pts.push({ x: targetX, y: targetY });
-  return pts;
-}
-
-// [신규] 2단계 2분기 번개 트리 생성 (중심 -> 외곽 도달)
-function createForkingLightningTree(radius) {
-  const mainAngle = Math.random() * Math.PI * 2;
-  const split1Dist = radius * (0.35 + Math.random() * 0.15);
-  const split2Dist = radius * (0.65 + Math.random() * 0.15);
-
-  const split1Angle = mainAngle + (Math.random() - 0.5) * 0.3;
-  const split1X = Math.cos(split1Angle) * split1Dist;
-  const split1Y = Math.sin(split1Angle) * split1Dist;
-  const trunkPts = generateJaggedBranch(0, 0, split1X, split1Y, 4);
-
-  const spread1 = (35 + Math.random() * 20) * (Math.PI / 180);
-  const angleA = split1Angle - spread1 * 0.5;
-  const angleB = split1Angle + spread1 * 0.5;
-
-  const split2X = Math.cos(angleA) * split2Dist;
-  const split2Y = Math.sin(angleA) * split2Dist;
-  const branchAPts = generateJaggedBranch(split1X, split1Y, split2X, split2Y, 4);
-
-  const spread2 = (30 + Math.random() * 25) * (Math.PI / 180);
-  const endA1X = Math.cos(angleA - spread2 * 0.6) * radius;
-  const endA1Y = Math.sin(angleA - spread2 * 0.6) * radius;
-  const branchA1Pts = generateJaggedBranch(split2X, split2Y, endA1X, endA1Y, 4);
-
-  const endA2X = Math.cos(angleA + spread2 * 0.6) * radius;
-  const endA2Y = Math.sin(angleA + spread2 * 0.6) * radius;
-  const branchA2Pts = generateJaggedBranch(split2X, split2Y, endA2X, endA2Y, 4);
-
-  const endBX = Math.cos(angleB) * radius;
-  const endBY = Math.sin(angleB) * radius;
-  const branchBPts = generateJaggedBranch(split1X, split1Y, endBX, endBY, 5);
-
-  return {
-    trunk: trunkPts,
-    branchA: branchAPts,
-    branchA1: branchA1Pts,
-    branchA2: branchA2Pts,
-    branchB: branchBPts
-  };
-}
-
 // 적 비행기 감전(5줄기 번개) 효과 등록
 function triggerEnemyLightningShock(impactX, impactY, enemy) {
   if (!enemy || enemy.isDead) return;
@@ -1367,20 +1307,19 @@ class Player {
         this.twinEmpChargingTimer = 0; // 발사 후 기두부 원형 펄스 리셋
       }
 
-      // [트윈 8렙 전자기 구체] 2초 노출 + 2초 쿨타임 = 4.0초 주기 발동
-      if (this.lightningTimer >= 4.0) {
+      // [트윈 8렙 전자기 구체] 예전 초기 원본 타이머 복원: 발동 주기 2.0초, 화면 노출 1.8초
+      if (this.lightningTimer >= 2.0) {
         this.lightningTimer = 0;
         this.twinEmpChargingTimer = 0;
 
-        // 트윈 비행기 폭 44px 기준: 8렙 지름 132px(반경 66px), 16렙 지름 176px(반경 88px)
+        // 트윈 비행기 폭 44px 기준: 8렙 지름 3배(132px, 반경 66px), 16렙 지름 4배(176px, 반경 88px)
         const shipWidth = 44;
         const targetDiameter = isLv16 ? (shipWidth * 4) : (shipWidth * 3);
         const baseR = targetDiameter / 2;
 
-        // 내 비행기 높이(56px)의 4~5배 범위(224px ~ 280px) 사이 랜덤한 위치에 생성
+        // 내 비행기 높이(56px)의 4~5배 범위(224px ~ 280px) 사이 랜덤 위치 생성
         const shipHeight = 56;
         const forwardDistance = (shipHeight * 4) + Math.random() * (shipHeight * 1.0);
-        // 좌우로도 비행기 폭 반경 내에서 자연스럽게 약간의 랜덤 편차 부여
         const spawnX = Math.max(baseR + 10, Math.min(LOGICAL_WIDTH - baseR - 10, this.x + (Math.random() - 0.5) * 40));
         const spawnY = Math.max(baseR + 20, (this.y - 28) - forwardDistance);
 
@@ -1392,10 +1331,8 @@ class Player {
           radius: baseR,
           x: spawnX,
           y: spawnY,
-          activeBolts: [],
-          boltSpawnTimer: 0.0,
           elapsed: 0.0,
-          totalDuration: 2.0, // 화면에 2초간 노출
+          totalDuration: 1.8, // 예전 초기 노출 시간 1.8초 원복
           dmgTimer: 0.0,
           dmgVal: this.powerStat
         });
@@ -4315,6 +4252,7 @@ function safeGameLoop(now) {
 
         if (fb.dmgTimer >= 0.5) {
           fb.dmgTimer -= 0.5;
+          let hitAny = false;
           for (let ei = enemies.length - 1; ei >= 0; ei--) {
             const e = enemies[ei];
             // 보스 및 돌맹이(isHeavy)는 공격 대상에서 제외
@@ -4323,7 +4261,11 @@ function safeGameLoop(now) {
             if (dSq <= (fb.radius + e.radius) * (fb.radius + e.radius)) {
               applyDamageToEnemy(e, fb.dmgVal, "TWIN");
               triggerEnemyLightningShock(e.x, e.y, e);
+              hitAny = true;
             }
+          }
+          if (hitAny) {
+            playTone(850, 0.05, "triangle", -150, 0.08); // 전자기 감전 방전음
           }
         }
       }
@@ -4427,152 +4369,51 @@ function safeGameLoop(now) {
         ctx.restore();
       }
 
-      // [트윈 8렙 전자기 구체] 2초간 외곽 은은한 전기 안개 및 2단 분기 리얼 번개 렌더링
+      // [트윈 8렙 번개 구체] 초기 LightningBolt 이미지 및 페이드 방식 복원
       for (let i = 0; i < twinFieldBolts.length; i++) {
         const fb = twinFieldBolts[i];
         if (!fb || fb.type !== "ORB_EMP") continue;
 
-        // 2초 지속 시간에 따른 부드러운 페이드 인/아웃 (구체 수명 곡선)
-        const sphereFade = Math.sin((fb.elapsed / fb.totalDuration) * Math.PI);
-
-        // 번개 생성 타이머: 0.12초마다 1~2개 신규 번개 생성
-        fb.boltSpawnTimer = (fb.boltSpawnTimer || 0) + dt;
-        if (!fb.activeBolts) fb.activeBolts = [];
-        if (fb.boltSpawnTimer >= 0.12) {
-          fb.boltSpawnTimer = 0.0;
-          const colors = ["#00f5ff", "#ffffff", "#00f5ff", "#ff007f", "#38bdf8"];
-          const count = 1 + (Math.random() < 0.4 ? 1 : 0);
-          for (let k = 0; k < count; k++) {
-            const tree = createForkingLightningTree(fb.radius);
-            const randomLife = 0.45 + Math.random() * 0.40;
-            fb.activeBolts.push({
-              tree: tree,
-              color: colors[Math.floor(Math.random() * colors.length)],
-              progress: 0.0,
-              growthSpeed: 8.0 + Math.random() * 5.0,
-              life: randomLife,
-              totalLife: randomLife,
-              baseWidth: 2.8 + Math.random() * 0.8
-            });
-          }
-        }
+        // 초기 원본 페이드 계산식 (1.8초 동안 점진적 소멸)
+        const alpha = Math.max(0, 1.0 - (fb.elapsed / fb.totalDuration));
 
         ctx.save();
         ctx.translate(fb.x, fb.y);
+        ctx.globalAlpha = alpha;
 
-        // 1. [원 전체에 은은하게 퍼지는 6단계 전기 안개]
-        const mistPulse = Math.sin(curTime * 5.0) * 2;
-        const fullRadius = fb.radius + mistPulse;
-
-        const naturalMist = ctx.createRadialGradient(0, 0, 0, 0, 0, fullRadius);
-        naturalMist.addColorStop(0.00, `rgba(210, 240, 255, ${0.22 * sphereFade})`);
-        naturalMist.addColorStop(0.30, `rgba(140, 225, 255, ${0.18 * sphereFade})`);
-        naturalMist.addColorStop(0.60, `rgba(80, 180, 255, ${0.13 * sphereFade})`);
-        naturalMist.addColorStop(0.85, `rgba(110, 130, 240, ${0.08 * sphereFade})`);
-        naturalMist.addColorStop(0.96, `rgba(60, 100, 200, ${0.04 * sphereFade})`);
-        naturalMist.addColorStop(1.00, "rgba(0, 0, 0, 0)");
-        ctx.fillStyle = naturalMist;
+        // 1. 내부 플라즈마 오라 코어
+        const pGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, fb.radius);
+        pGrad.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+        pGrad.addColorStop(0.3, "rgba(0, 245, 255, 0.45)");
+        pGrad.addColorStop(0.7, "rgba(0, 150, 255, 0.22)");
+        pGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = pGrad;
         ctx.beginPath();
-        ctx.arc(0, 0, fullRadius, 0, Math.PI * 2);
+        ctx.arc(0, 0, fb.radius, 0, Math.PI * 2);
         ctx.fill();
 
-        // 2. [점 뭉침 없는 날카로운 꺾임 번개 & 끝단 10% 투명도 50% 추가 감쇠]
-        ctx.lineCap = "butt";
-        ctx.lineJoin = "bevel";
+        // 2. 외곽 네온 충격파 링 (투명도 rgba 0.7 적용)
+        ctx.strokeStyle = "rgba(0, 245, 255, 0.7)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, fb.radius, 0, Math.PI * 2);
+        ctx.stroke();
 
-        for (let bIdx = fb.activeBolts.length - 1; bIdx >= 0; bIdx--) {
-          const b = fb.activeBolts[bIdx];
-
-          if (b.progress < 1.0) {
-            b.progress = Math.min(1.0, b.progress + b.growthSpeed * dt);
-          } else {
-            b.life -= dt;
+        // 3. 지그재그 전격 아크 (6갈래)
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.8;
+        for (let k = 0; k < 6; k++) {
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          let cx = 0, cy = 0;
+          for (let s = 0; s < 5; s++) {
+            cx += (Math.random() - 0.5) * (fb.radius * 0.8);
+            cy += (Math.random() - 0.5) * (fb.radius * 0.8);
+            ctx.lineTo(cx, cy);
           }
-
-          if (b.life <= 0) {
-            fb.activeBolts.splice(bIdx, 1);
-            continue;
-          }
-
-          const boltAlpha = Math.max(0, b.life / b.totalLife);
-          const baseAlphaVal = boltAlpha * 0.85 * sphereFade;
-
-          const wTrunk = b.baseWidth;
-          const wBranch1 = b.baseWidth * 0.65;
-          const wBranch2 = b.baseWidth * 0.33; // 끝단 굵기 1/3
-
-          const drawSeamlessStroke = (pts, strokeW, strokeCol, glow, progRatio, isTipBranch = false) => {
-            if (!pts || pts.length < 2 || progRatio <= 0) return;
-            const count = Math.max(2, Math.floor(pts.length * Math.min(1.0, progRatio)));
-            const normalLimit = isTipBranch ? Math.max(1, count - 1) : count;
-
-            if (normalLimit >= 2) {
-              ctx.save();
-              ctx.globalAlpha = baseAlphaVal;
-              if (glow > 0) {
-                ctx.shadowBlur = glow;
-                ctx.shadowColor = strokeCol;
-              }
-              ctx.strokeStyle = strokeCol;
-              ctx.lineWidth = strokeW;
-              ctx.beginPath();
-              ctx.moveTo(pts[0].x, pts[0].y);
-              for (let p = 1; p < normalLimit; p++) ctx.lineTo(pts[p].x, pts[p].y);
-              ctx.stroke();
-
-              ctx.strokeStyle = "#ffffff";
-              ctx.lineWidth = Math.max(0.5, strokeW * 0.4);
-              ctx.shadowBlur = 0;
-              ctx.beginPath();
-              ctx.moveTo(pts[0].x, pts[0].y);
-              for (let p = 1; p < normalLimit; p++) ctx.lineTo(pts[p].x, pts[p].y);
-              ctx.stroke();
-              ctx.restore();
-            }
-
-            // 끝단 10% 구간: 투명도 50% 추가 감쇠
-            if (isTipBranch && count > normalLimit) {
-              ctx.save();
-              ctx.globalAlpha = baseAlphaVal * 0.5;
-              if (glow > 0) {
-                ctx.shadowBlur = glow * 0.7;
-                ctx.shadowColor = strokeCol;
-              }
-              ctx.strokeStyle = strokeCol;
-              ctx.lineWidth = strokeW;
-              ctx.beginPath();
-              ctx.moveTo(pts[normalLimit - 1].x, pts[normalLimit - 1].y);
-              for (let p = normalLimit; p < count; p++) ctx.lineTo(pts[p].x, pts[p].y);
-              ctx.stroke();
-
-              ctx.strokeStyle = "#ffffff";
-              ctx.lineWidth = Math.max(0.4, strokeW * 0.35);
-              ctx.shadowBlur = 0;
-              ctx.beginPath();
-              ctx.moveTo(pts[normalLimit - 1].x, pts[normalLimit - 1].y);
-              for (let p = normalLimit; p < count; p++) ctx.lineTo(pts[p].x, pts[p].y);
-              ctx.stroke();
-              ctx.restore();
-            }
-          };
-
-          // 기둥(Trunk)
-          const pTrunk = Math.min(1.0, b.progress / 0.40);
-          drawSeamlessStroke(b.tree.trunk, wTrunk, b.color, 7, pTrunk, false);
-
-          // 1차 분기 (줄기 A, B)
-          if (b.progress > 0.40) {
-            const pBranch1 = Math.min(1.0, (b.progress - 0.40) / 0.35);
-            drawSeamlessStroke(b.tree.branchA, wBranch1, b.color, 6, pBranch1, false);
-            drawSeamlessStroke(b.tree.branchB, wBranch1, b.color, 6, pBranch1, true);
-          }
-
-          // 2차 분기 (줄기 A1, A2: 외곽 끝 도달)
-          if (b.progress > 0.75) {
-            const pBranch2 = Math.min(1.0, (b.progress - 0.75) / 0.25);
-            drawSeamlessStroke(b.tree.branchA1, wBranch2, b.color, 3.5, pBranch2, true);
-            drawSeamlessStroke(b.tree.branchA2, wBranch2, b.color, 3.5, pBranch2, true);
-          }
+          ctx.stroke();
         }
 
         ctx.restore();
