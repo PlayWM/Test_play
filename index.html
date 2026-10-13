@@ -32,7 +32,7 @@ const nameInput = document.getElementById("name-input");
 
 const LOGICAL_WIDTH = 450;
 const LOGICAL_HEIGHT = 800;
-const VERSION_STR = "v20261013F.03";
+const VERSION_STR = "v20261013F.05";
 const FIREBASE_URL = "https://flywm-d0b39-default-rtdb.asia-southeast1.firebasedatabase.app/leaderboard.json";
 const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Malgun Gothic', sans-serif";
 
@@ -3473,12 +3473,13 @@ function handlePointerDown(e) {
       else if (coords.y >= 395 && coords.y <= 470) startBattle(3);
     }
   } else if (gameState === 1 && player && player.isAlive && !playerDeathCinematic.active) {
-    // 1. 일시정지 중일 때 다시 터치하면 3초 카운트다운 시작
+    // 카운트다운 진행 중에는 일체 입력 무시
+    if (stopResumeCountdown > 0) return;
+
+    // 일시정지 상태에서 터치 시 1회만 카운트다운 시작
     if (isGameStopped) {
-      if (stopResumeCountdown <= 0) {
-        stopResumeCountdown = 3.0;
-        playTone(600, 0.15, "triangle", 0, 0.15);
-      }
+      stopResumeCountdown = 3.0;
+      playTone(600, 0.15, "triangle", 0, 0.15);
       return;
     }
 
@@ -4085,8 +4086,10 @@ function safeGameLoop(now) {
 
     if (stopResumeCountdown > 0) {
       stopResumeCountdown = Math.max(0, stopResumeCountdown - dt);
-      if (stopResumeCountdown === 0) {
-        stopSpeedRestoreTimer = 3.0; // 카운트다운 종료 즉시 3초간 속도 회복 시작
+      if (stopResumeCountdown <= 0) {
+        stopResumeCountdown = 0.0;
+        isGameStopped = false; // 정지 상태 완전 해제 (재시작 확정)
+        stopSpeedRestoreTimer = 3.0; // 3초간 50% -> 100% 점진 회복 시작
       }
     }
 
@@ -4627,21 +4630,21 @@ function safeGameLoop(now) {
         ctx.fillText(`RATE    : Lv.${Math.round(player.fireRateStat)}`, 14, baseBottomY - 2);
       }
 
-      // [좌하단 Stop 일시정지 게이지 버튼 렌더링]
-      const stopW = 110, stopH = 16, stopX = 14, stopY = LOGICAL_HEIGHT - 32;
+      // [좌하단 Stop 일시정지 게이지 버튼 렌더링 - 높이 20% 증가: 16 -> 19.2px]
+      const stopW = 110, stopH = 19.2, stopX = 14, stopY = LOGICAL_HEIGHT - 35;
       const stopPct = Math.min(1.0, stopGaugeTime / STOP_GAUGE_MAX);
       const isStopReady = (stopPct >= 1.0);
 
       ctx.save();
       // 배경 박스
       ctx.fillStyle = "#0a0f1d";
-      drawRoundRect(ctx, stopX, stopY, stopW, stopH, 8);
+      drawRoundRect(ctx, stopX, stopY, stopW, stopH, 9);
       ctx.fill();
 
       // 충전 게이지 바
       if (stopW * stopPct > 2) {
         ctx.fillStyle = isStopReady ? (Math.floor(curTime * 10) % 2 === 0 ? "#00f5ff" : "#ffe600") : "rgba(0, 245, 255, 0.45)";
-        drawRoundRect(ctx, stopX, stopY, stopW * stopPct, stopH, 8);
+        drawRoundRect(ctx, stopX, stopY, stopW * stopPct, stopH, 9);
         ctx.fill();
       }
 
@@ -4652,19 +4655,20 @@ function safeGameLoop(now) {
         ctx.shadowBlur = 8;
         ctx.shadowColor = "#00f5ff";
       }
-      drawRoundRect(ctx, stopX, stopY, stopW, stopH, 8);
+      drawRoundRect(ctx, stopX, stopY, stopW, stopH, 9);
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // STOP 문구 (0%나 100% 충전 시에도 항상 뚜렷하게 보이도록 검은 외곽선 스트로크 + 밝은 글씨)
+      // STOP 문구 확대: bold 11px -> bold 12.5px
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.font = `bold 11px ${FONT_FAMILY}`;
+      ctx.font = `bold 12.5px ${FONT_FAMILY}`;
       ctx.strokeStyle = "#000000";
-      ctx.lineWidth = 2.5;
-      ctx.strokeText(isStopReady ? "★ STOP READY" : `STOP (${Math.floor(stopPct * 100)}%)`, stopX + stopW / 2, stopY + stopH / 2 + 0.5);
+      ctx.lineWidth = 2.8;
+      const stopLabel = isStopReady ? "★ STOP READY" : `STOP (${Math.floor(stopPct * 100)}%)`;
+      ctx.strokeText(stopLabel, stopX + stopW / 2, stopY + stopH / 2 + 0.5);
       ctx.fillStyle = isStopReady ? "#ffffff" : "#cceeff";
-      ctx.fillText(isStopReady ? "★ STOP READY" : `STOP (${Math.floor(stopPct * 100)}%)`, stopX + stopW / 2, stopY + stopH / 2 + 0.5);
+      ctx.fillText(stopLabel, stopX + stopW / 2, stopY + stopH / 2 + 0.5);
       ctx.restore();
 
       // [일시정지 중 오버레이 & 3초 카운트다운 안내]
