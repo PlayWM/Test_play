@@ -32,7 +32,7 @@ const nameInput = document.getElementById("name-input");
 
 const LOGICAL_WIDTH = 450;
 const LOGICAL_HEIGHT = 800;
-const VERSION_STR = "v20261013F.05";
+const VERSION_STR = "v20261013F.07";
 const FIREBASE_URL = "https://flywm-d0b39-default-rtdb.asia-southeast1.firebasedatabase.app/leaderboard.json";
 const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Malgun Gothic', sans-serif";
 
@@ -3008,31 +3008,45 @@ function safeKillEnemy(e, customColor="#ffe600", isHedgehogKill=false) {
 function applyDamageToEnemy(e, dmg, bType="DEFAULT", isLaserShards=false) {
   if (hitImpacts.length < 30) hitImpacts.push(new BulletHitImpactFX(e.x, e.y, bType));
 
-  if (e.isHeavy) {
-    let hitAmount = 1;
-    if (bType === "TWIN") hitAmount = 0.5;
-    // 0.2초 틱마다 0.33씩 누적되어 약 12초(파워형 1렙 20발 발사 시간과 동일)만에 파괴
-    else if (bType === "MISSILE_NEEDLE") hitAmount = 0.33;
+  const curHitTime = performance.now() / 1000;
 
-    e.shieldHits = (e.shieldHits || 0) + hitAmount;
+  // 1. 회색 돌맹이: 연속 피격 4.5초 누적 시 파괴
+  if (e.isHeavy) {
+    if (e.lastHeavyHitTime) {
+      const timeDelta = curHitTime - e.lastHeavyHitTime;
+      if (timeDelta > 0 && timeDelta <= 1.0) {
+        e.heavyBurnedTime = (e.heavyBurnedTime || 0) + timeDelta;
+      }
+    }
+    e.lastHeavyHitTime = curHitTime;
+
     if (explosions.length < 35) explosions.push(new ExplosionFX(e.x, e.y, "#cbd5e1"));
     playTone(600, 0.05, "sawtooth", -100, 0.08);
-    if (e.shieldHits >= 20) {
+
+    if ((e.heavyBurnedTime || 0) >= 4.5) {
       safeKillEnemy(e, "#cbd5e1");
     }
     return;
   }
 
+  // 2. 보호막 비행기: 연속 피격 3.0초 누적 시 파괴
   if (e.hasShield) {
-    let hitAmount = 1;
-    if (bType === "TWIN") hitAmount = 0.5;
-    else if (bType === "MISSILE_NEEDLE") hitAmount = 0.33;
-    e.shieldHits += hitAmount;
+    if (e.lastShieldHitTime) {
+      const timeDelta = curHitTime - e.lastShieldHitTime;
+      if (timeDelta > 0 && timeDelta <= 1.0) {
+        e.shieldBurnedTime = (e.shieldBurnedTime || 0) + timeDelta;
+      }
+    }
+    e.lastShieldHitTime = curHitTime;
+
     e.freezeTimer = 0.07;
     e.vx = 0;
     if (explosions.length < 35) explosions.push(new ExplosionFX(e.x, e.y, "#00f5ff"));
     playTone(820, 0.05, "triangle", 0, 0.06);
-    if (e.shieldHits >= 20) safeKillEnemy(e);
+
+    if ((e.shieldBurnedTime || 0) >= 3.0) {
+      safeKillEnemy(e);
+    }
   } else {
     e.hp -= dmg;
     if (e.hp <= 0) safeKillEnemy(e);
@@ -4671,34 +4685,7 @@ function safeGameLoop(now) {
       ctx.fillText(stopLabel, stopX + stopW / 2, stopY + stopH / 2 + 0.5);
       ctx.restore();
 
-      // [일시정지 중 오버레이 & 3초 카운트다운 안내]
-      if (isGameStopped || stopResumeCountdown > 0) {
-        ctx.save();
-        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-        ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
-
-        ctx.textAlign = "center";
-        if (stopResumeCountdown > 0) {
-          // 3초 카운트다운 표시
-          const countNum = Math.ceil(stopResumeCountdown);
-          ctx.fillStyle = "#ffe600";
-          ctx.font = `bold 72px ${FONT_FAMILY}`;
-          ctx.fillText(`${countNum}`, LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2 - 20);
-          ctx.font = `bold 16px ${FONT_FAMILY}`;
-          ctx.fillStyle = "#00f5ff";
-          ctx.fillText("RESUMING BATTLE...", LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2 + 50);
-        } else {
-          // 정지 상태 안내 문구
-          ctx.fillStyle = "#00f5ff";
-          ctx.font = `bold 32px ${FONT_FAMILY}`;
-          ctx.fillText("GAME PAUSED", LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2 - 20);
-          ctx.fillStyle = "#ffffff";
-          ctx.font = `bold 14px ${FONT_FAMILY}`;
-          ctx.fillText("TAP SCREEN TO RESUME", LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2 + 30);
-        }
-        ctx.restore();
-      }
-
+      // [우하단 스킬 충전 게이지 렌더링 - 일시정지 오버레이보다 먼저 렌더링되도록 위로 이동]
       const gw = 130, gh = 16, gx = LOGICAL_WIDTH - gw - 20, gy = LOGICAL_HEIGHT - 35;
       ctx.save();
 
@@ -4744,6 +4731,34 @@ function safeGameLoop(now) {
       ctx.font = `bold 12px ${FONT_FAMILY}`;
       ctx.fillText(gPct >= 0.85 ? "★ SKILL READY ★" : "SKILL GAUGE", gx, gy - 6);
       ctx.restore();
+
+      // [일시정지 중 오버레이 & 3초 카운트다운 안내 - 맨 마지막에 그려 모든 요소를 덮음]
+      if (isGameStopped || stopResumeCountdown > 0) {
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+        ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
+        ctx.textAlign = "center";
+        if (stopResumeCountdown > 0) {
+          // 3초 카운트다운 표시
+          const countNum = Math.ceil(stopResumeCountdown);
+          ctx.fillStyle = "#ffe600";
+          ctx.font = `bold 72px ${FONT_FAMILY}`;
+          ctx.fillText(`${countNum}`, LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2 - 20);
+          ctx.font = `bold 16px ${FONT_FAMILY}`;
+          ctx.fillStyle = "#00f5ff";
+          ctx.fillText("RESUMING BATTLE...", LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2 + 50);
+        } else {
+          // 정지 상태 안내 문구
+          ctx.fillStyle = "#00f5ff";
+          ctx.font = `bold 32px ${FONT_FAMILY}`;
+          ctx.fillText("GAME PAUSED", LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2 - 20);
+          ctx.fillStyle = "#ffffff";
+          ctx.font = `bold 14px ${FONT_FAMILY}`;
+          ctx.fillText("TAP SCREEN TO RESUME", LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2 + 30);
+        }
+        ctx.restore();
+      }
 
     } else if (gameState === 2) {
       ctx.textAlign = "center";
