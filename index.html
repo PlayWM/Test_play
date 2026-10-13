@@ -1333,7 +1333,7 @@ class Player {
           y: spawnY,
           elapsed: 0.0,
           totalDuration: 1.8, // 예전 초기 노출 시간 1.8초 원복
-          dmgTimer: 0.0,
+          dmgTimer: 0.5, // 생성 즉시 닿는 적에게 1차 타격 바로 적용
           dmgVal: this.powerStat
         });
         playTone(900, 0.25, "sawtooth", -250, 0.14);
@@ -3669,12 +3669,7 @@ function safeGameLoop(now) {
       enemyLightningShocks[i].life -= dt;
       if (enemyLightningShocks[i].life <= 0) enemyLightningShocks.splice(i, 1);
     }
-    for (let i = twinFieldBolts.length - 1; i >= 0; i--) {
-        twinFieldBolts[i].elapsed += dt;
-        if (twinFieldBolts[i].elapsed >= twinFieldBolts[i].totalDuration) twinFieldBolts.splice(i, 1);
-      }
-
-      // [기능 1] 전투 중 실시간 랭킹 보드 (적/오브젝트보다 하단에 먼저 렌더링)
+    // [기능 1] 전투 중 실시간 랭킹 보드 (적/오브젝트보다 하단에 먼저 렌더링)
       if (gameState === 1) {
         ctx.save();
         
@@ -4248,6 +4243,8 @@ function safeGameLoop(now) {
       for (let fi = twinFieldBolts.length - 1; fi >= 0; fi--) {
         const fb = twinFieldBolts[fi];
         if (!fb || fb.type !== "ORB_EMP") continue;
+
+        fb.elapsed += dt;
         fb.dmgTimer = (fb.dmgTimer || 0) + dt;
 
         if (fb.dmgTimer >= 0.5) {
@@ -4267,6 +4264,11 @@ function safeGameLoop(now) {
           if (hitAny) {
             playTone(850, 0.05, "triangle", -150, 0.08); // 전자기 감전 방전음
           }
+        }
+
+        // 1.8초 수명이 다하면 판정 종료 후 안전하게 제거
+        if (fb.elapsed >= fb.totalDuration) {
+          twinFieldBolts.splice(fi, 1);
         }
       }
 
