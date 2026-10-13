@@ -32,7 +32,7 @@ const nameInput = document.getElementById("name-input");
 
 const LOGICAL_WIDTH = 450;
 const LOGICAL_HEIGHT = 800;
-const VERSION_STR = "v20261012.01";
+const VERSION_STR = "v20261013.01";
 const FIREBASE_URL = "https://flywm-d0b39-default-rtdb.asia-southeast1.firebasedatabase.app/leaderboard.json";
 const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Malgun Gothic', sans-serif";
 
@@ -90,29 +90,57 @@ function getCachedBgGrad(c) {
   return cachedBgGrad;
 }
 
+// [GPU 과열 방지 최적화] 원형 성운 텍스처 오프스크린 캔버스 1회 사전 렌더링
+let nebCanvas1 = null;
+let nebCanvas2 = null;
+
+function getPreRenderedNebula1() {
+  if (!nebCanvas1) {
+    nebCanvas1 = document.createElement("canvas");
+    nebCanvas1.width = 450;
+    nebCanvas1.height = 450;
+    const nctx = nebCanvas1.getContext("2d");
+    const g = nctx.createRadialGradient(225, 225, 15, 225, 225, 225);
+    g.addColorStop(0, "rgba(195, 220, 255, 0.22)");
+    g.addColorStop(0.45, "rgba(105, 50, 185, 0.14)");
+    g.addColorStop(1, "rgba(0, 0, 0, 0)");
+    nctx.fillStyle = g;
+    nctx.fillRect(0, 0, 450, 450);
+  }
+  return nebCanvas1;
+}
+
+function getPreRenderedNebula2() {
+  if (!nebCanvas2) {
+    nebCanvas2 = document.createElement("canvas");
+    nebCanvas2.width = 490;
+    nebCanvas2.height = 490;
+    const nctx = nebCanvas2.getContext("2d");
+    const g = nctx.createRadialGradient(245, 245, 20, 245, 245, 245);
+    g.addColorStop(0, "rgba(215, 240, 255, 0.18)");
+    g.addColorStop(0.5, "rgba(0, 195, 245, 0.12)");
+    g.addColorStop(1, "rgba(0, 0, 0, 0)");
+    nctx.fillStyle = g;
+    nctx.fillRect(0, 0, 490, 490);
+  }
+  return nebCanvas2;
+}
+
 function drawDynamicDeepSpaceBackground(c, dt) {
   nebulaOffsetTime += dt * 3.0;
 
+  // 1. 기본 선형 우주 배경
   c.fillStyle = getCachedBgGrad(c);
   c.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
+  // 2. 가벼운 drawImage 비트맵 고속 전송 (매 프레임 RadialGradient 생성 차단)
   const n1x = Math.round(100 + Math.sin(nebulaOffsetTime * 0.45) * 65);
   const n1y = Math.round(210 + Math.cos(nebulaOffsetTime * 0.35) * 45);
-  const neb1 = c.createRadialGradient(n1x, n1y, 15, n1x, n1y, 225);
-  neb1.addColorStop(0, "rgba(195, 220, 255, 0.22)");
-  neb1.addColorStop(0.45, "rgba(105, 50, 185, 0.14)");
-  neb1.addColorStop(1, "rgba(0, 0, 0, 0)");
-  c.fillStyle = neb1;
-  c.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+  c.drawImage(getPreRenderedNebula1(), n1x - 225, n1y - 225);
 
   const n2x = Math.round(330 + Math.cos(nebulaOffsetTime * 0.4) * 60);
   const n2y = Math.round(620 + Math.sin(nebulaOffsetTime * 0.5) * 55);
-  const neb2 = c.createRadialGradient(n2x, n2y, 20, n2x, n2y, 245);
-  neb2.addColorStop(0, "rgba(215, 240, 255, 0.18)");
-  neb2.addColorStop(0.5, "rgba(0, 195, 245, 0.12)");
-  neb2.addColorStop(1, "rgba(0, 0, 0, 0)");
-  c.fillStyle = neb2;
-  c.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+  c.drawImage(getPreRenderedNebula2(), n2x - 245, n2y - 245);
 
   // 0~20초: 1.0배, 21~50초: 1.0 -> 2.0배 점진 가속, 50초 이후: 2.0배 유지
   let starSpeedMult = 1.0;
@@ -155,6 +183,66 @@ function createLightningPoints(sx, sy, tx, ty, segments = 5, maxDisp = 9) {
   }
   pts.push({ x: tx, y: ty });
   return pts;
+}
+
+// [신규] 날카롭게 꺾이는 세그먼트 생성 (꺾임 관절 점 뭉침 없는 단일 세그먼트)
+function generateJaggedBranch(sx, sy, targetX, targetY, segCount) {
+  const pts = [{ x: sx, y: sy }];
+  const dx = (targetX - sx) / segCount;
+  const dy = (targetY - sy) / segCount;
+  const baseAngle = Math.atan2(targetY - sy, targetX - sx);
+  const dist = Math.hypot(targetX - sx, targetY - sy);
+  const perpAngle = baseAngle + Math.PI / 2;
+
+  for (let i = 1; i < segCount; i++) {
+    const jitter = (Math.random() - 0.5) * (dist * 0.45);
+    const px = sx + dx * i + Math.cos(perpAngle) * jitter;
+    const py = sy + dy * i + Math.sin(perpAngle) * jitter;
+    pts.push({ x: px, y: py });
+  }
+  pts.push({ x: targetX, y: targetY });
+  return pts;
+}
+
+// [신규] 2단계 2분기 번개 트리 생성 (중심 -> 외곽 도달)
+function createForkingLightningTree(radius) {
+  const mainAngle = Math.random() * Math.PI * 2;
+  const split1Dist = radius * (0.35 + Math.random() * 0.15);
+  const split2Dist = radius * (0.65 + Math.random() * 0.15);
+
+  const split1Angle = mainAngle + (Math.random() - 0.5) * 0.3;
+  const split1X = Math.cos(split1Angle) * split1Dist;
+  const split1Y = Math.sin(split1Angle) * split1Dist;
+  const trunkPts = generateJaggedBranch(0, 0, split1X, split1Y, 4);
+
+  const spread1 = (35 + Math.random() * 20) * (Math.PI / 180);
+  const angleA = split1Angle - spread1 * 0.5;
+  const angleB = split1Angle + spread1 * 0.5;
+
+  const split2X = Math.cos(angleA) * split2Dist;
+  const split2Y = Math.sin(angleA) * split2Dist;
+  const branchAPts = generateJaggedBranch(split1X, split1Y, split2X, split2Y, 4);
+
+  const spread2 = (30 + Math.random() * 25) * (Math.PI / 180);
+  const endA1X = Math.cos(angleA - spread2 * 0.6) * radius;
+  const endA1Y = Math.sin(angleA - spread2 * 0.6) * radius;
+  const branchA1Pts = generateJaggedBranch(split2X, split2Y, endA1X, endA1Y, 4);
+
+  const endA2X = Math.cos(angleA + spread2 * 0.6) * radius;
+  const endA2Y = Math.sin(angleA + spread2 * 0.6) * radius;
+  const branchA2Pts = generateJaggedBranch(split2X, split2Y, endA2X, endA2Y, 4);
+
+  const endBX = Math.cos(angleB) * radius;
+  const endBY = Math.sin(angleB) * radius;
+  const branchBPts = generateJaggedBranch(split1X, split1Y, endBX, endBY, 5);
+
+  return {
+    trunk: trunkPts,
+    branchA: branchAPts,
+    branchA1: branchA1Pts,
+    branchA2: branchA2Pts,
+    branchB: branchBPts
+  };
 }
 
 // 적 비행기 감전(5줄기 번개) 효과 등록
@@ -1279,27 +1367,35 @@ class Player {
         this.twinEmpChargingTimer = 0; // 발사 후 기두부 원형 펄스 리셋
       }
 
-      // 트윈형 8렙: 비행기 꼭지점 위쪽으로 비행기 높이 3배(168px) 위치에 자기장 생성
+      // [트윈 8렙 전자기 구체] 2초 노출 + 2초 쿨타임 = 4.0초 주기 발동
       if (this.lightningTimer >= 4.0) {
         this.lightningTimer = 0;
         this.twinEmpChargingTimer = 0;
 
-        // 비행기 크기(반경 22px)의 3배(66px), 16렙 시 30% 더 큰 86px
-        const baseR = (this.radius * 3) * (isLv16 ? 1.3 : 1.0);
-        // 비행기 머리 꼭지점(y - 28)에서 위쪽 방향으로 비행기 높이(56px)의 3배(168px) 떨어진 위치
-        const forwardOffset = 168;
+        // 트윈 비행기 폭 44px 기준: 8렙 지름 132px(반경 66px), 16렙 지름 176px(반경 88px)
+        const shipWidth = 44;
+        const targetDiameter = isLv16 ? (shipWidth * 4) : (shipWidth * 3);
+        const baseR = targetDiameter / 2;
 
+        // 내 비행기 높이(56px)의 4~5배 범위(224px ~ 280px) 사이 랜덤한 위치에 생성
+        const shipHeight = 56;
+        const forwardDistance = (shipHeight * 4) + Math.random() * (shipHeight * 1.0);
+        // 좌우로도 비행기 폭 반경 내에서 자연스럽게 약간의 랜덤 편차 부여
+        const spawnX = Math.max(baseR + 10, Math.min(LOGICAL_WIDTH - baseR - 10, this.x + (Math.random() - 0.5) * 40));
+        const spawnY = Math.max(baseR + 20, (this.y - 28) - forwardDistance);
+
+        if (twinFieldBolts.length >= 3) {
+          twinFieldBolts.shift();
+        }
         twinFieldBolts.push({
           type: "ORB_EMP",
-          sourcePlayer: this,
           radius: baseR,
-          forwardOffset: forwardOffset,
-          x: this.x,
-          y: (this.y - 28) - forwardOffset,
+          x: spawnX,
+          y: spawnY,
           activeBolts: [],
-          boltIntervalTimer: 0.0,
+          boltSpawnTimer: 0.0,
           elapsed: 0.0,
-          totalDuration: 4.0,
+          totalDuration: 2.0, // 화면에 2초간 노출
           dmgTimer: 0.0,
           dmgVal: this.powerStat
         });
@@ -1717,9 +1813,10 @@ class StationaryMissileLaser {
     let minD1Sq = Infinity;
     for (let i = 0; i < enemies.length; i++) {
       const e = enemies[i];
-      if (e.hp <= 0 || e.isDead || e.y >= this.startY || e.y < 20) continue;
-      if (this.targetSide === "LEFT" && e.x > this.x + 2) continue;
-      if (this.targetSide === "RIGHT" && e.x < this.x - 2) continue;
+      if (e.hp <= 0 || e.isDead || e.isHeavy || e.y >= this.startY || e.y < 20) continue;
+      // [항목 2] 첫 꺾임 방향 강제: 왼쪽 레이저는 발사구보다 왼쪽의 적만, 오른쪽 레이저는 오른쪽의 적만 1차 조준
+      if (this.targetSide === "LEFT" && e.x > this.x - 2) continue;
+      if (this.targetSide === "RIGHT" && e.x < this.x + 2) continue;
 
       if (Math.abs(e.x - this.x) <= maxSearchWidth + e.radius) {
         const dSq = (e.x - this.x) * (e.x - this.x) + (e.y - this.startY) * (e.y - this.startY);
@@ -1727,7 +1824,7 @@ class StationaryMissileLaser {
       }
     }
 
-    // 장애물(돌맹이/혜성)에 부딪힌 경우 레이저가 관통하지 않고 멈추며 튕겨나오는 5줄기 파편선 생성
+    // 장애물(돌맹이/혜성)에 부딪힌 경우 레이저가 멈추며 튕겨나오는 파편선 생성
     if (blockedObj && (!closerEnemy || closerEnemy.y < blockY)) {
       this.path.push({ x: this.x, y: blockY });
       if (blockedIsEnemy) {
@@ -1746,46 +1843,52 @@ class StationaryMissileLaser {
       return;
     }
 
-    const baseTargetX = this.x + Math.tan(this.angleOffsetRad) * this.startY;
-
     if (!closerEnemy) {
-      this.path.push({ x: baseTargetX, y: 0 });
+      // 적이 없으면 수직 상단으로 관통 직진
+      this.path.push({ x: this.x, y: 0 });
       return;
     }
 
+    // 1차 타깃 연결 (첫 꺾임)
     let t1 = closerEnemy;
-    const t1X = this.x + Math.tan(this.angleOffsetRad) * (this.startY - t1.y);
-    this.path.push({ x: t1X, y: t1.y });
-    if (Math.abs(t1X - t1.x) <= t1.radius + 12) {
-      this.hitEnemies.push({ enemy: t1, bendCount: 0 });
-    }
+    let dx1 = t1.x - this.x;
+    let dy1 = Math.max(1, this.startY - t1.y);
+    let angle1 = Math.atan2(dx1, dy1);
+    // 첫 꺾임 각도 클램프 (왼쪽 레이저는 음수 각도만, 오른쪽 레이저는 양수 각도만)
+    let clampedAngle1 = (this.targetSide === "LEFT") ? Math.max(-maxBendRad, Math.min(0, angle1)) : Math.max(0, Math.min(maxBendRad, angle1));
+    let finalX1 = this.x + Math.sin(clampedAngle1) * dy1;
 
+    this.path.push({ x: finalX1, y: t1.y });
+    this.hitEnemies.push({ enemy: t1, bendCount: 0 });
+
+    // 2차 타깃 탐색: 첫 꺾임 이후에는 좌/우 방향 제한 없이 자유롭게 가장 가까운 적 조준
     let t2 = null;
     let minD2Sq = Infinity;
     for (let i = 0; i < enemies.length; i++) {
       const e = enemies[i];
       if (e !== t1 && e.hp > 0 && !e.isDead && !e.isHeavy && e.y < t1.y && e.y >= 20) {
-        const dSq = (e.x - this.x) * (e.x - this.x) + (e.y - t1.y) * (e.y - t1.y);
+        const dSq = (e.x - finalX1) * (e.x - finalX1) + (e.y - t1.y) * (e.y - t1.y);
         if (dSq < minD2Sq) { minD2Sq = dSq; t2 = e; }
       }
     }
 
     if (!t2) {
-      this.path.push({ x: this.x, y: 0 });
+      // [항목 1] 1차 적 타격 후 2차 적이 없어도 상단 끝까지 관통하여 뻗어 나감
+      let remainDist = Math.max(0, t1.y);
+      this.path.push({ x: finalX1 + Math.sin(clampedAngle1) * remainDist, y: 0 });
       return;
     }
 
-    let dx2 = t2.x - this.x;
+    let dx2 = t2.x - finalX1;
     let dy2 = Math.max(1, t1.y - t2.y);
     let angle2 = Math.atan2(dx2, dy2);
     let clampedAngle2 = Math.max(-maxBendRad, Math.min(maxBendRad, angle2));
-    let finalX2 = this.x + Math.sin(clampedAngle2) * dy2;
+    let finalX2 = finalX1 + Math.sin(clampedAngle2) * dy2;
 
     this.path.push({ x: finalX2, y: t2.y });
-    if (Math.abs(finalX2 - t2.x) <= t2.radius + 12) {
-      this.hitEnemies.push({ enemy: t2, bendCount: 1 });
-    }
+    this.hitEnemies.push({ enemy: t2, bendCount: 1 });
 
+    // 3차 타깃 탐색: 좌/우 방향 제한 없이 자유 조준
     let t3 = null;
     let minD3Sq = Infinity;
     for (let i = 0; i < enemies.length; i++) {
@@ -1797,6 +1900,7 @@ class StationaryMissileLaser {
     }
 
     if (!t3) {
+      // [항목 1] 2차 적 타격 후 상단 끝까지 관통 연장
       let remainDist = Math.max(0, t2.y);
       this.path.push({ x: finalX2 + Math.sin(clampedAngle2) * remainDist, y: 0 });
       return;
@@ -1809,9 +1913,11 @@ class StationaryMissileLaser {
     let finalX3 = finalX2 + Math.sin(clampedAngle3) * dy3;
 
     this.path.push({ x: finalX3, y: t3.y });
-    if (Math.abs(finalX3 - t3.x) <= t3.radius + 12) {
-      this.hitEnemies.push({ enemy: t3, bendCount: 2 });
-    }
+    this.hitEnemies.push({ enemy: t3, bendCount: 2 });
+
+    // [항목 1] 3차 적 타격 후에도 상단 끝까지 완전히 관통
+    let finalRemainDist = Math.max(0, t3.y);
+    this.path.push({ x: finalX3 + Math.sin(clampedAngle3) * finalRemainDist, y: 0 });
   }
 
   update(dt, enemiesList) {
@@ -1825,13 +1931,27 @@ class StationaryMissileLaser {
         if (!target || !target.enemy) continue;
         const e = target.enemy;
         if (typeof e.hp === "number" && !e.isDead && e.hp > 0) {
-          // 2줄기 레이저가 동시에 같은 대상(돌맹이/보호막)을 맞춰도 1개 맞춘 것과 같게 처리 (0.15초 이내 중복 카운트 차단)
-          if ((e.isHeavy || e.hasShield) && e.lastMissileLaserTick && (curTickTime - e.lastMissileLaserTick < 0.15)) {
+          // 1. 회색 돌맹이 및 보호막 적: 2줄기가 동시 타격해도 1줄기 카운트만 유지
+          if ((e.isHeavy || e.hasShield)) {
+            if (e.lastMissileLaserTick && (curTickTime - e.lastMissileLaserTick < 0.15)) {
+              continue;
+            }
+            e.lastMissileLaserTick = curTickTime;
+            const actualDmg = this.powerDmg * Math.pow(0.7, target.bendCount || 0);
+            applyDamageToEnemy(e, actualDmg, "MISSILE_NEEDLE", false);
             continue;
           }
-          e.lastMissileLaserTick = curTickTime;
 
-          const actualDmg = this.powerDmg * Math.pow(0.7, target.bendCount || 0);
+          // 2. [항목 3] 일반 적 비행기: 2줄기 레이저의 공격선 안에 동시에 걸리면 각각 50%씩 반영
+          let isSimultaneousHit = false;
+          if (e.lastGeneralLaserTick && (curTickTime - e.lastGeneralLaserTick < 0.15)) {
+            isSimultaneousHit = true;
+          }
+          e.lastGeneralLaserTick = curTickTime;
+
+          // 동시 피격 시 50% 데미지, 단독 피격 시 100% 데미지
+          const damageRatio = isSimultaneousHit ? 0.50 : 1.0;
+          const actualDmg = this.powerDmg * Math.pow(0.7, target.bendCount || 0) * damageRatio;
           applyDamageToEnemy(e, actualDmg, "MISSILE_NEEDLE", false);
         }
       }
@@ -2797,6 +2917,8 @@ class Enemy {
     this.colorIdx = Math.floor(Math.random() * 5);
     this.isDead = false;
     this.isBeingSucked = false;
+    this.lastMissileLaserTick = 0;
+    this.lastGeneralLaserTick = 0;
   }
   update(dt, elapsed, speedScale=1.0, widthScale=1.0) {
     if (this.isBeingSucked) return;
@@ -4305,50 +4427,32 @@ function safeGameLoop(now) {
         ctx.restore();
       }
 
-      // 트윈형 8렙 전자기장: 외곽선/곡선선 삭제, 30% 진해진 회색 그라데이션, 40~60도 각진 번개 3개 0.3초 노출 연출
+      // [트윈 8렙 전자기 구체] 2초간 외곽 은은한 전기 안개 및 2단 분기 리얼 번개 렌더링
       for (let i = 0; i < twinFieldBolts.length; i++) {
         const fb = twinFieldBolts[i];
         if (!fb || fb.type !== "ORB_EMP") continue;
 
-        // 비행기 꼭지점(y - 28)에서 위쪽 방향으로 비행기 높이 3배(168px) 위치 추적
-        if (fb.sourcePlayer) {
-          fb.x = fb.sourcePlayer.x;
-          fb.y = (fb.sourcePlayer.y - 28) - fb.forwardOffset;
-        }
+        // 2초 지속 시간에 따른 부드러운 페이드 인/아웃 (구체 수명 곡선)
+        const sphereFade = Math.sin((fb.elapsed / fb.totalDuration) * Math.PI);
 
-        const fadeAlpha = Math.max(0, 1.0 - (fb.elapsed / fb.totalDuration));
-
-        // 0.3초 주기로 번개 3개 생성 및 갱신 (0.3초간 노출)
-        fb.boltIntervalTimer = (fb.boltIntervalTimer || 0) + dt;
-        if (!fb.activeBolts || fb.boltIntervalTimer >= 0.30) {
-          fb.boltIntervalTimer = 0.0;
-          const colors = ["#00f5ff", "#ff007f", "#ffffff", "#39ff14", "#d946ef"];
-          fb.activeBolts = [];
-
-          for (let b = 0; b < 3; b++) {
-            // 원 내부 임의의 시작점
-            const startAng = Math.random() * Math.PI * 2;
-            const startDist = Math.random() * (fb.radius * 0.50);
-            let cx = Math.cos(startAng) * startDist;
-            let cy = Math.sin(startAng) * startDist;
-
-            const pts = [{ x: cx, y: cy }];
-            let curAngle = -Math.PI / 2 + (Math.random() - 0.5) * 1.0;
-
-            // 각지게 4번 꺾임 (꺾인 각도 40~60도)
-            for (let s = 0; s < 4; s++) {
-              const deg = 40 + Math.random() * 20; // 40~60도
-              const radChange = (deg * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);
-              curAngle += radChange;
-              const stepLen = 10 + Math.random() * 12;
-              cx += Math.cos(curAngle) * stepLen;
-              cy += Math.sin(curAngle) * stepLen;
-              pts.push({ x: cx, y: cy });
-            }
-
+        // 번개 생성 타이머: 0.12초마다 1~2개 신규 번개 생성
+        fb.boltSpawnTimer = (fb.boltSpawnTimer || 0) + dt;
+        if (!fb.activeBolts) fb.activeBolts = [];
+        if (fb.boltSpawnTimer >= 0.12) {
+          fb.boltSpawnTimer = 0.0;
+          const colors = ["#00f5ff", "#ffffff", "#00f5ff", "#ff007f", "#38bdf8"];
+          const count = 1 + (Math.random() < 0.4 ? 1 : 0);
+          for (let k = 0; k < count; k++) {
+            const tree = createForkingLightningTree(fb.radius);
+            const randomLife = 0.45 + Math.random() * 0.40;
             fb.activeBolts.push({
-              pts: pts,
-              color: colors[Math.floor(Math.random() * colors.length)]
+              tree: tree,
+              color: colors[Math.floor(Math.random() * colors.length)],
+              progress: 0.0,
+              growthSpeed: 8.0 + Math.random() * 5.0,
+              life: randomLife,
+              totalLife: randomLife,
+              baseWidth: 2.8 + Math.random() * 0.8
             });
           }
         }
@@ -4356,47 +4460,121 @@ function safeGameLoop(now) {
         ctx.save();
         ctx.translate(fb.x, fb.y);
 
-        // 1. 내부 회색 그라데이션 원 (지금 대비 30% 더 진하게: Alpha 0.29 / 0.16 / 0.07)
-        const bgGrayGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, fb.radius);
-        bgGrayGrad.addColorStop(0, `rgba(235, 240, 245, ${0.29 * fadeAlpha})`);
-        bgGrayGrad.addColorStop(0.55, `rgba(180, 190, 205, ${0.16 * fadeAlpha})`);
-        bgGrayGrad.addColorStop(0.85, `rgba(130, 140, 155, ${0.07 * fadeAlpha})`);
-        bgGrayGrad.addColorStop(1.0, "rgba(200, 210, 220, 0)");
-        ctx.fillStyle = bgGrayGrad;
+        // 1. [원 전체에 은은하게 퍼지는 6단계 전기 안개]
+        const mistPulse = Math.sin(curTime * 5.0) * 2;
+        const fullRadius = fb.radius + mistPulse;
+
+        const naturalMist = ctx.createRadialGradient(0, 0, 0, 0, 0, fullRadius);
+        naturalMist.addColorStop(0.00, `rgba(210, 240, 255, ${0.22 * sphereFade})`);
+        naturalMist.addColorStop(0.30, `rgba(140, 225, 255, ${0.18 * sphereFade})`);
+        naturalMist.addColorStop(0.60, `rgba(80, 180, 255, ${0.13 * sphereFade})`);
+        naturalMist.addColorStop(0.85, `rgba(110, 130, 240, ${0.08 * sphereFade})`);
+        naturalMist.addColorStop(0.96, `rgba(60, 100, 200, ${0.04 * sphereFade})`);
+        naturalMist.addColorStop(1.00, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = naturalMist;
         ctx.beginPath();
-        ctx.arc(0, 0, fb.radius, 0, Math.PI * 2);
+        ctx.arc(0, 0, fullRadius, 0, Math.PI * 2);
         ctx.fill();
 
-        // 2. 외곽 라인 및 내부 곡선 라인 삭제됨 (스트로크 없음)
+        // 2. [점 뭉침 없는 날카로운 꺾임 번개 & 끝단 10% 투명도 50% 추가 감쇠]
+        ctx.lineCap = "butt";
+        ctx.lineJoin = "bevel";
 
-        // 3. 임의 위치 번개 3개 연출 (각지게 4번 꺾인 번개)
-        ctx.lineCap = "round";
-        ctx.lineJoin = "miter";
-        for (let b = 0; b < fb.activeBolts.length; b++) {
-          const bolt = fb.activeBolts[b];
-          if (!bolt.pts || bolt.pts.length < 2) continue;
+        for (let bIdx = fb.activeBolts.length - 1; bIdx >= 0; bIdx--) {
+          const b = fb.activeBolts[bIdx];
 
-          ctx.strokeStyle = bolt.color;
-          ctx.lineWidth = 2.0;
-          ctx.globalAlpha = fadeAlpha * 0.95;
-          ctx.beginPath();
-          ctx.moveTo(bolt.pts[0].x, bolt.pts[0].y);
-          for (let p = 1; p < bolt.pts.length; p++) {
-            ctx.lineTo(bolt.pts[p].x, bolt.pts[p].y);
+          if (b.progress < 1.0) {
+            b.progress = Math.min(1.0, b.progress + b.growthSpeed * dt);
+          } else {
+            b.life -= dt;
           }
-          ctx.stroke();
 
-          // 번개 중심 고열 화이트 심선
-          ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = 0.9;
-          ctx.globalAlpha = fadeAlpha * 0.90;
-          ctx.beginPath();
-          ctx.moveTo(bolt.pts[0].x, bolt.pts[0].y);
-          for (let p = 1; p < bolt.pts.length; p++) {
-            ctx.lineTo(bolt.pts[p].x, bolt.pts[p].y);
+          if (b.life <= 0) {
+            fb.activeBolts.splice(bIdx, 1);
+            continue;
           }
-          ctx.stroke();
+
+          const boltAlpha = Math.max(0, b.life / b.totalLife);
+          const baseAlphaVal = boltAlpha * 0.85 * sphereFade;
+
+          const wTrunk = b.baseWidth;
+          const wBranch1 = b.baseWidth * 0.65;
+          const wBranch2 = b.baseWidth * 0.33; // 끝단 굵기 1/3
+
+          const drawSeamlessStroke = (pts, strokeW, strokeCol, glow, progRatio, isTipBranch = false) => {
+            if (!pts || pts.length < 2 || progRatio <= 0) return;
+            const count = Math.max(2, Math.floor(pts.length * Math.min(1.0, progRatio)));
+            const normalLimit = isTipBranch ? Math.max(1, count - 1) : count;
+
+            if (normalLimit >= 2) {
+              ctx.save();
+              ctx.globalAlpha = baseAlphaVal;
+              if (glow > 0) {
+                ctx.shadowBlur = glow;
+                ctx.shadowColor = strokeCol;
+              }
+              ctx.strokeStyle = strokeCol;
+              ctx.lineWidth = strokeW;
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x, pts[0].y);
+              for (let p = 1; p < normalLimit; p++) ctx.lineTo(pts[p].x, pts[p].y);
+              ctx.stroke();
+
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineWidth = Math.max(0.5, strokeW * 0.4);
+              ctx.shadowBlur = 0;
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x, pts[0].y);
+              for (let p = 1; p < normalLimit; p++) ctx.lineTo(pts[p].x, pts[p].y);
+              ctx.stroke();
+              ctx.restore();
+            }
+
+            // 끝단 10% 구간: 투명도 50% 추가 감쇠
+            if (isTipBranch && count > normalLimit) {
+              ctx.save();
+              ctx.globalAlpha = baseAlphaVal * 0.5;
+              if (glow > 0) {
+                ctx.shadowBlur = glow * 0.7;
+                ctx.shadowColor = strokeCol;
+              }
+              ctx.strokeStyle = strokeCol;
+              ctx.lineWidth = strokeW;
+              ctx.beginPath();
+              ctx.moveTo(pts[normalLimit - 1].x, pts[normalLimit - 1].y);
+              for (let p = normalLimit; p < count; p++) ctx.lineTo(pts[p].x, pts[p].y);
+              ctx.stroke();
+
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineWidth = Math.max(0.4, strokeW * 0.35);
+              ctx.shadowBlur = 0;
+              ctx.beginPath();
+              ctx.moveTo(pts[normalLimit - 1].x, pts[normalLimit - 1].y);
+              for (let p = normalLimit; p < count; p++) ctx.lineTo(pts[p].x, pts[p].y);
+              ctx.stroke();
+              ctx.restore();
+            }
+          };
+
+          // 기둥(Trunk)
+          const pTrunk = Math.min(1.0, b.progress / 0.40);
+          drawSeamlessStroke(b.tree.trunk, wTrunk, b.color, 7, pTrunk, false);
+
+          // 1차 분기 (줄기 A, B)
+          if (b.progress > 0.40) {
+            const pBranch1 = Math.min(1.0, (b.progress - 0.40) / 0.35);
+            drawSeamlessStroke(b.tree.branchA, wBranch1, b.color, 6, pBranch1, false);
+            drawSeamlessStroke(b.tree.branchB, wBranch1, b.color, 6, pBranch1, true);
+          }
+
+          // 2차 분기 (줄기 A1, A2: 외곽 끝 도달)
+          if (b.progress > 0.75) {
+            const pBranch2 = Math.min(1.0, (b.progress - 0.75) / 0.25);
+            drawSeamlessStroke(b.tree.branchA1, wBranch2, b.color, 3.5, pBranch2, true);
+            drawSeamlessStroke(b.tree.branchA2, wBranch2, b.color, 3.5, pBranch2, true);
+          }
         }
+
         ctx.restore();
       }
 
