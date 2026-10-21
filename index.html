@@ -5195,19 +5195,9 @@ function safeGameLoop(now) {
       ctx.textAlign = "center";
       ctx.fillStyle = "#00f5ff";
       ctx.font = `bold 16px ${FONT_FAMILY}`;
-      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 335);
+      ctx.fillText("PILOT SKILL STATUS", LOGICAL_WIDTH / 2, 48);
 
-      // [부스트업 모드 전용] 랜덤 룰렛과 하단 +5 카드 사이로 이동 + 글자 크기 2단계 확대 + 깜빡임 효과
-      if (isBoostSelectionMode) {
-        const isBlinking = Math.floor(curTime * 6) % 2 === 0; // 부드러운 깜빡임 주기
-        ctx.fillStyle = isBlinking ? "#ffe600" : "#ff007f";
-        ctx.font = `bold 15px ${FONT_FAMILY}`; // 기존 11px 대비 2단계 이상 확대
-        ctx.fillText("★ BOOST REWARD: Choose 3x Random Spin OR +5 Skill! ★", LOGICAL_WIDTH / 2, 492);
-      }
-
-      // 부스트 모드일 때는 룰렛 위치와 하단 카드의 간격을 벌려 위아래 여유 공간 확보
-      const btnMultY = isBoostSelectionMode ? 395 : 384;
-      const btnMult = { x: 35, y: btnMultY, w: 380, h: 85 };
+      const inspectBox = { x: 35, y: 56, w: 380, h: 210 };
       ctx.save();
       ctx.fillStyle = "rgba(6, 12, 28, 0.94)";
       drawRoundRect(ctx, inspectBox.x, inspectBox.y, inspectBox.w, inspectBox.h, 10);
@@ -5401,14 +5391,17 @@ function safeGameLoop(now) {
       ctx.textAlign = "center";
       ctx.fillStyle = "#00f5ff";
       ctx.font = `bold 16px ${FONT_FAMILY}`;
-      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 355);
+      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 282);
 
-      // [추가] 부스트업 보상 안내 서브 텍스트
-      ctx.fillStyle = "#ffe600";
-      ctx.font = `bold 12px ${FONT_FAMILY}`;
-      ctx.fillText("★ BOOST REWARD: Choose a 3x Random Spin OR +5 Skill! ★", LOGICAL_WIDTH / 2, 375);
+      if (isBoostSelectionMode) {
+        const isBlinking = Math.floor(curTime * 6) % 2 === 0;
+        ctx.fillStyle = isBlinking ? "#ffe600" : "#ff007f";
+        ctx.font = `bold 14px ${FONT_FAMILY}`;
+        ctx.fillText("★ BOOST REWARD: Choose 3x Random Spin OR +5 Skill! ★", LOGICAL_WIDTH / 2, 302);
+      }
 
-      const btnMult = { x: 35, y: 395, w: 380, h: 85 }; // Y좌표를 395로 소폭 조절하여 공간 확보
+      const btnMultY = isBoostSelectionMode ? 318 : 305;
+      const btnMult = { x: 35, y: btnMultY, w: 380, h: 85 };
       if (curTime - lastMultRollTime >= 0.048) {
         lastMultRollTime = curTime;
         currentMultIndex = (currentMultIndex + 1) % shuffledMultiplierPool.length;
@@ -5453,8 +5446,8 @@ function safeGameLoop(now) {
       ctx.fillText("x1 (50%) / x2 (30%) / x3 (20%) CHANCE", btnMult.x + btnMult.w / 2, btnMult.y + 75);
       ctx.restore();
 
-      const slotToSkillGap = 494 - (384 + 85);
-      const row1CardY = isBoostSelectionMode ? 525 : 494; // 부스트 모드 시 아래로 더 내림
+      const slotToSkillGap = 22;
+      const row1CardY = isBoostSelectionMode ? 445 : 420;
       const row2Y = row1CardY + 66 + slotToSkillGap;
 
       const addLabel = isBoostSelectionMode ? "+5" : "+1";
@@ -5478,7 +5471,6 @@ function safeGameLoop(now) {
         const c = allPickCards[i];
         ctx.save();
 
-        // [추가] 랜덤 뽑기를 시작한 상태에서 하단 +5 카드들인 경우 비활성화(투명도 0.35) 처리
         const isLowerCardDisabled = isBoostSelectionMode && boostRandomSpinsLeft > 0 && (c.code === "POWER_UP" || c.code === "MISSILE_UP" || c.code === "FIRE_RATE");
 
         if (c.active || isLowerCardDisabled) ctx.globalAlpha = 0.35;
