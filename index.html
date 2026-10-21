@@ -3564,27 +3564,11 @@ if (type === 3) {
   initBattleState();
 }
 
-let player = null;
-let bullets = [];
-let homingMissiles = [];
-let missileShards = [];
-let stationaryLasers = [];
-let missileShadows = [];
-let rockDebrisList = [];
-let hitImpacts = [];
-let suckingEntities = [];
-let enemies = [];
-let bossMissiles = [];
-let bossDropItems = [];
-let twinFieldBolts = [];
-let enemyLightningShocks = [];
-let blackHoles = [];
-let currentBoss = null;
-let explosions = [];
-let activeLasers = [];
-let boostUpItem = null;           // 추가
-let isBoostSelectionMode = false; // 추가
-let boostRandomSpinsLeft = 0;     // 추가
+let boostUpItem = null;
+let isBoostSelectionMode = false;
+let boostRandomSpinsLeft = 0;
+
+function initBattleState() {
 
 function initBattleState() {
   bullets = []; homingMissiles = []; missileShards = []; stationaryLasers = []; missileShadows = []; rockDebrisList = []; hitImpacts = []; suckingEntities = [];
@@ -3716,18 +3700,19 @@ function enterSlotMenu() {
 function applyChosenSkill(code, customDuration=null) {
   let titleStr = "";
   let colorStr = "#00f5ff";
+  const addLv = isBoostSelectionMode ? 5 : 1;
 
   if (code === "POWER_UP") {
-    player.powerStat += 1;
-    titleStr = "POWER UP +1";
+    player.powerStat += addLv;
+    titleStr = `POWER UP +${addLv}`;
     colorStr = "#ff0080";
   } else if (code === "MISSILE_UP") {
-    player.missileStat += 1;
-    titleStr = "MISSILE UP +1";
+    player.missileStat += addLv;
+    titleStr = `MISSILE UP +${addLv}`;
     colorStr = "#00f5ff";
   } else if (code === "FIRE_RATE") {
-    player.fireRateStat += 1;
-    titleStr = "RATE UP +1";
+    player.fireRateStat += addLv;
+    titleStr = `RATE UP +${addLv}`;
     colorStr = "#ffe600";
   } else if (code === "CLONE_SHIP") {
     const addTime = customDuration || 30.0;
@@ -3740,6 +3725,9 @@ function applyChosenSkill(code, customDuration=null) {
     const addTime = customDuration || 30.0;
     player.shieldRemain = Math.min(30.0, player.shieldRemain + addTime);
   }
+
+  isBoostSelectionMode = false;
+  boostRandomSpinsLeft = 0;
 
   if (code === "POWER_UP" || code === "MISSILE_UP" || code === "FIRE_RATE") {
     randomPickResult = { label: titleStr, col: colorStr };
@@ -3847,10 +3835,17 @@ function handlePointerDown(e) {
       else if (picked.type === "MSL") player.missileStat += picked.val;
       else if (picked.type === "RATE") player.fireRateStat += picked.val;
 
+      if (isBoostSelectionMode) {
+        if (boostRandomSpinsLeft === 0) boostRandomSpinsLeft = 2; // 첫 클릭 시 남은 횟수 2회 세팅 (총 3회)
+        else boostRandomSpinsLeft--;
+      }
+
       randomPickResult = {
         label: picked.label,
         col: picked.col,
-        header: picked.val > 1 ? "★ BONUS MULTIPLIER WON! ★" : "★ UPGRADE CONFIRMED! ★"
+        header: (isBoostSelectionMode && boostRandomSpinsLeft > 0)
+          ? `★ BOOST SPIN! (${boostRandomSpinsLeft} LEFT) ★`
+          : (picked.val > 1 ? "★ BONUS MULTIPLIER WON! ★" : "★ UPGRADE CONFIRMED! ★")
       };
       randomPickShowcaseActive = true;
       randomPickShowcaseStartTime = performance.now() / 1000;
@@ -5442,10 +5437,11 @@ function safeGameLoop(now) {
       const slotToSkillGap = 494 - (384 + 85);
       const row2Y = 494 + 66 + slotToSkillGap;
 
+      const addLabel = isBoostSelectionMode ? "+5" : "+1";
       const row1Cards = [
-        { code: "POWER_UP", title: "POWER +1", desc: "INSTANT", col: "#ff0080", x: 35, y: 494, w: 115, h: 66 },
-        { code: "MISSILE_UP", title: "MISSILE +1", desc: "INSTANT", col: "#00f5ff", x: 167, y: 494, w: 115, h: 66 },
-        { code: "FIRE_RATE", title: "RATE +1", desc: "INSTANT", col: "#ffe600", x: 300, y: 494, w: 115, h: 66 }
+        { code: "POWER_UP", title: `POWER ${addLabel}`, desc: "INSTANT", col: "#ff0080", x: 35, y: 494, w: 115, h: 66 },
+        { code: "MISSILE_UP", title: `MISSILE ${addLabel}`, desc: "INSTANT", col: "#00f5ff", x: 167, y: 494, w: 115, h: 66 },
+        { code: "FIRE_RATE", title: `RATE ${addLabel}`, desc: "INSTANT", col: "#ffe600", x: 300, y: 494, w: 115, h: 66 }
       ];
 
       const row2Cards = [
@@ -5536,12 +5532,20 @@ function safeGameLoop(now) {
         ctx.fillText(randomPickResult.label, LOGICAL_WIDTH / 2, popY + 105);
         ctx.fillStyle = "#00f5ff";
         ctx.font = `bold 14px ${FONT_FAMILY}`;
-        ctx.fillText("RETURNING TO BATTLE...", LOGICAL_WIDTH / 2, popY + 155);
+        const subNotice = (isBoostSelectionMode && boostRandomSpinsLeft > 0) ? "PREPARING NEXT SPIN..." : "RETURNING TO BATTLE...";
+        ctx.fillText(subNotice, LOGICAL_WIDTH / 2, popY + 155);
         ctx.restore();
 
         if (showcaseElapsed >= 1.5) {
           randomPickShowcaseActive = false;
-          playChosenImmediateReturn();
+          if (isBoostSelectionMode && boostRandomSpinsLeft > 0) {
+            shuffledMultiplierPool = generateWeightedRoulettePool(24);
+            currentMultIndex = 0;
+          } else {
+            isBoostSelectionMode = false;
+            boostRandomSpinsLeft = 0;
+            playChosenImmediateReturn();
+          }
         }
       }
     } else if (gameState === 5) {
