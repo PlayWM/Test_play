@@ -3847,10 +3847,17 @@ function handlePointerDown(e) {
       else if (picked.type === "MSL") player.missileStat += picked.val;
       else if (picked.type === "RATE") player.fireRateStat += picked.val;
 
+      if (isBoostSelectionMode) {
+        if (boostRandomSpinsLeft === 0) boostRandomSpinsLeft = 2;
+        else boostRandomSpinsLeft--;
+      }
+
       randomPickResult = {
         label: picked.label,
         col: picked.col,
-        header: picked.val > 1 ? "★ BONUS MULTIPLIER WON! ★" : "★ UPGRADE CONFIRMED! ★"
+        header: (isBoostSelectionMode && boostRandomSpinsLeft > 0)
+          ? `★ BOOST SPIN! (${boostRandomSpinsLeft} SPINS LEFT) ★`
+          : (picked.val > 1 ? "★ BONUS MULTIPLIER WON! ★" : "★ UPGRADE CONFIRMED! ★")
       };
       randomPickShowcaseActive = true;
       randomPickShowcaseStartTime = performance.now() / 1000;
@@ -5406,16 +5413,14 @@ function safeGameLoop(now) {
       }
 
       if (isBoostSelectionMode) {
-        // 주기를 6에서 12로 높여 기존보다 2배 더 빠르게 반짝이게 설정
-        const isBlinking = Math.floor(curTime * 12) % 2 === 0;
+        const isBlinking = Math.floor(curTime * 24) % 2 === 0; // 기존보다 2배 더 빠르게 반짝임
         ctx.save();
         ctx.textAlign = "center";
-        // 네온 발광 효과 적용
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 16;
         ctx.shadowColor = isBlinking ? "#ffe600" : "#ff007f";
         ctx.fillStyle = isBlinking ? "#ffe600" : "#ff007f";
-        ctx.font = `bold 20px ${FONT_FAMILY}`; // 기존 16px 대비 2단계 큼직하게 확대
-        ctx.fillText("★ 3x RANDOM OR +5 SKILLS ★", LOGICAL_WIDTH / 2, 488); // 룰렛과 고정 스킬 사이 정중앙에 정확히 배치
+        ctx.font = `bold 20px ${FONT_FAMILY}`;
+        ctx.fillText("★ 3x RANDOM OR +5 SKILLS ★", LOGICAL_WIDTH / 2, 430);
         ctx.restore();
       }
 
@@ -5569,7 +5574,14 @@ function safeGameLoop(now) {
 
         if (showcaseElapsed >= 1.5) {
           randomPickShowcaseActive = false;
-          playChosenImmediateReturn();
+          if (isBoostSelectionMode && boostRandomSpinsLeft > 0) {
+            shuffledMultiplierPool = generateWeightedRoulettePool(24);
+            currentMultIndex = 0;
+          } else {
+            isBoostSelectionMode = false;
+            boostRandomSpinsLeft = 0;
+            playChosenImmediateReturn();
+          }
         }
       }
     } else if (gameState === 5) {
