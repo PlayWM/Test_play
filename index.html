@@ -3714,18 +3714,19 @@ function enterSlotMenu() {
 function applyChosenSkill(code, customDuration=null) {
   let titleStr = "";
   let colorStr = "#00f5ff";
+  const addLv = isBoostSelectionMode ? 5 : 1;
 
   if (code === "POWER_UP") {
-    player.powerStat += 1;
-    titleStr = "POWER UP +1";
+    player.powerStat += addLv;
+    titleStr = `POWER UP +${addLv}`;
     colorStr = "#ff0080";
   } else if (code === "MISSILE_UP") {
-    player.missileStat += 1;
-    titleStr = "MISSILE UP +1";
+    player.missileStat += addLv;
+    titleStr = `MISSILE UP +${addLv}`;
     colorStr = "#00f5ff";
   } else if (code === "FIRE_RATE") {
-    player.fireRateStat += 1;
-    titleStr = "RATE UP +1";
+    player.fireRateStat += addLv;
+    titleStr = `RATE UP +${addLv}`;
     colorStr = "#ffe600";
   } else if (code === "CLONE_SHIP") {
     const addTime = customDuration || 30.0;
@@ -3856,12 +3857,18 @@ function handlePointerDown(e) {
       return;
     }
 
-    const slotToSkillGap = 494 - (384 + 85);
-    const row2TouchY = 494 + 66 + slotToSkillGap;
-    const pickCards = [
-      { code: "POWER_UP", x: 35, y: 494, w: 115, h: 66 },
-      { code: "MISSILE_UP", x: 167, y: 494, w: 115, h: 66 },
-      { code: "FIRE_RATE", x: 300, y: 494, w: 115, h: 66 },
+    const slotToSkillGap = 22;
+    const row1CardY = isBoostSelectionMode ? 510 : 494;
+    const row2TouchY = row1CardY + 66 + slotToSkillGap;
+
+    const pickCards = isBoostSelectionMode ? [
+      { code: "POWER_UP", x: 35, y: row1CardY, w: 115, h: 66 },
+      { code: "MISSILE_UP", x: 167, y: row1CardY, w: 115, h: 66 },
+      { code: "FIRE_RATE", x: 300, y: row1CardY, w: 115, h: 66 }
+    ] : [
+      { code: "POWER_UP", x: 35, y: row1CardY, w: 115, h: 66 },
+      { code: "MISSILE_UP", x: 167, y: row1CardY, w: 115, h: 66 },
+      { code: "FIRE_RATE", x: 300, y: row1CardY, w: 115, h: 66 },
       { code: "SHIELD", x: 35, y: row2TouchY, w: 115, h: 66, active: player && player.shieldRemain > 0 },
       { code: "LASER_WEAPON", x: 167, y: row2TouchY, w: 115, h: 66, active: player && player.laserWeaponTimer > 0 },
       { code: "CLONE_SHIP", x: 300, y: row2TouchY, w: 115, h: 66, active: player && player.clonePlaneTimer > 0 }
@@ -5390,12 +5397,23 @@ function safeGameLoop(now) {
 
       ctx.restore();
 
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#00f5ff";
-      ctx.font = `bold 16px ${FONT_FAMILY}`;
-      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 370);
+      if (!isBoostSelectionMode) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#00f5ff";
+        ctx.font = `bold 16px ${FONT_FAMILY}`;
+        ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 370);
+      }
 
-      const btnMult = { x: 35, y: 384, w: 380, h: 85 };
+      if (isBoostSelectionMode) {
+        const isBlinking = Math.floor(curTime * 6) % 2 === 0;
+        ctx.textAlign = "center";
+        ctx.fillStyle = isBlinking ? "#ffe600" : "#ff007f";
+        ctx.font = `bold 16px ${FONT_FAMILY}`;
+        ctx.fillText("★ 3x RANDOM OR +5 SKILLS ★", LOGICAL_WIDTH / 2, 492);
+      }
+
+      const btnMultY = isBoostSelectionMode ? 315 : 384;
+      const btnMult = { x: 35, y: btnMultY, w: 380, h: 85 };
       if (curTime - lastMultRollTime >= 0.048) {
         lastMultRollTime = curTime;
         currentMultIndex = (currentMultIndex + 1) % shuffledMultiplierPool.length;
@@ -5440,16 +5458,18 @@ function safeGameLoop(now) {
       ctx.fillText("x1 (50%) / x2 (30%) / x3 (20%) CHANCE", btnMult.x + btnMult.w / 2, btnMult.y + 75);
       ctx.restore();
 
-      const slotToSkillGap = 494 - (384 + 85);
-      const row2Y = 494 + 66 + slotToSkillGap;
+      const slotToSkillGap = 22;
+      const row1CardY = isBoostSelectionMode ? 510 : 494;
+      const row2Y = row1CardY + 66 + slotToSkillGap;
 
+      const addLabel = isBoostSelectionMode ? "+5" : "+1";
       const row1Cards = [
-        { code: "POWER_UP", title: "POWER +1", desc: "INSTANT", col: "#ff0080", x: 35, y: 494, w: 115, h: 66 },
-        { code: "MISSILE_UP", title: "MISSILE +1", desc: "INSTANT", col: "#00f5ff", x: 167, y: 494, w: 115, h: 66 },
-        { code: "FIRE_RATE", title: "RATE +1", desc: "INSTANT", col: "#ffe600", x: 300, y: 494, w: 115, h: 66 }
+        { code: "POWER_UP", title: `POWER ${addLabel}`, desc: "INSTANT", col: "#ff0080", x: 35, y: row1CardY, w: 115, h: 66 },
+        { code: "MISSILE_UP", title: `MISSILE ${addLabel}`, desc: "INSTANT", col: "#00f5ff", x: 167, y: row1CardY, w: 115, h: 66 },
+        { code: "FIRE_RATE", title: `RATE ${addLabel}`, desc: "INSTANT", col: "#ffe600", x: 300, y: row1CardY, w: 115, h: 66 }
       ];
 
-      const row2Cards = [
+      const row2Cards = isBoostSelectionMode ? [] : [
         { code: "SHIELD", title: "SHIELD", desc: "1~30s", col: "#32ff78", x: 35, y: row2Y, w: 115, h: 66, active: player && player.shieldRemain > 0 },
         { code: "LASER_WEAPON", title: "LASER", desc: "1~30s", col: "#00f5ff", x: 167, y: row2Y, w: 115, h: 66, active: player && player.laserWeaponTimer > 0 },
         { code: "CLONE_SHIP", title: "TWIN", desc: "1~30s", col: "#78a0ff", x: 300, y: row2Y, w: 115, h: 66, active: player && player.clonePlaneTimer > 0 }
