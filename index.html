@@ -3865,6 +3865,12 @@ function handlePointerDown(e) {
       let c = pickCards[i];
       if (coords.x >= c.x && coords.x <= c.x + c.w && coords.y >= c.y && coords.y <= c.y + c.h) {
         if (c.active) return;
+        
+        // [추가] 부스트 모드에서 이미 랜덤 뽑기(상단 룰렛)를 선택한 적이 있다면 하단 +5 버튼 클릭 원천 차단
+        if (isBoostSelectionMode && boostRandomSpinsLeft > 0 && (c.code === "POWER_UP" || c.code === "MISSILE_UP" || c.code === "FIRE_RATE")) {
+          return;
+        }
+
         if (c.code === "LASER_WEAPON" || c.code === "SHIELD" || c.code === "CLONE_SHIP") {
           minigameTargetOption = c.code;
           minigameSelectedTime = null;
@@ -5385,9 +5391,14 @@ function safeGameLoop(now) {
       ctx.textAlign = "center";
       ctx.fillStyle = "#00f5ff";
       ctx.font = `bold 16px ${FONT_FAMILY}`;
-      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 370);
+      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 355);
 
-      const btnMult = { x: 35, y: 384, w: 380, h: 85 };
+      // [추가] 부스트업 보상 안내 서브 텍스트
+      ctx.fillStyle = "#ffe600";
+      ctx.font = `bold 12px ${FONT_FAMILY}`;
+      ctx.fillText("★ BOOST REWARD: Choose a 3x Random Spin OR +5 Skill! ★", LOGICAL_WIDTH / 2, 375);
+
+      const btnMult = { x: 35, y: 395, w: 380, h: 85 }; // Y좌표를 395로 소폭 조절하여 공간 확보
       if (curTime - lastMultRollTime >= 0.048) {
         lastMultRollTime = curTime;
         currentMultIndex = (currentMultIndex + 1) % shuffledMultiplierPool.length;
@@ -5442,7 +5453,7 @@ function safeGameLoop(now) {
         { code: "FIRE_RATE", title: `RATE ${addLabel}`, desc: "INSTANT", col: "#ffe600", x: 300, y: 494, w: 115, h: 66 }
       ];
 
-      const row2Cards = [
+      const row2Cards = isBoostSelectionMode ? [] : [
         { code: "SHIELD", title: "SHIELD", desc: "1~30s", col: "#32ff78", x: 35, y: row2Y, w: 115, h: 66, active: player && player.shieldRemain > 0 },
         { code: "LASER_WEAPON", title: "LASER", desc: "1~30s", col: "#00f5ff", x: 167, y: row2Y, w: 115, h: 66, active: player && player.laserWeaponTimer > 0 },
         { code: "CLONE_SHIP", title: "TWIN", desc: "1~30s", col: "#78a0ff", x: 300, y: row2Y, w: 115, h: 66, active: player && player.clonePlaneTimer > 0 }
@@ -5455,7 +5466,11 @@ function safeGameLoop(now) {
       for (let i = 0; i < allPickCards.length; i++) {
         const c = allPickCards[i];
         ctx.save();
-        if (c.active) ctx.globalAlpha = 0.50;
+
+        // [추가] 랜덤 뽑기를 시작한 상태에서 하단 +5 카드들인 경우 비활성화(투명도 0.35) 처리
+        const isLowerCardDisabled = isBoostSelectionMode && boostRandomSpinsLeft > 0 && (c.code === "POWER_UP" || c.code === "MISSILE_UP" || c.code === "FIRE_RATE");
+
+        if (c.active || isLowerCardDisabled) ctx.globalAlpha = 0.35;
 
         ctx.fillStyle = "rgba(10, 16, 35, 0.85)";
         drawRoundRect(ctx, c.x, c.y, c.w, c.h, 10);
