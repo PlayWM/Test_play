@@ -3851,12 +3851,18 @@ function handlePointerDown(e) {
       return;
     }
 
-    const slotToSkillGap = 494 - (384 + 85);
-    const row2TouchY = 494 + 66 + slotToSkillGap;
-    const pickCards = [
-      { code: "POWER_UP", x: 35, y: 494, w: 115, h: 66 },
-      { code: "MISSILE_UP", x: 167, y: 494, w: 115, h: 66 },
-      { code: "FIRE_RATE", x: 300, y: 494, w: 115, h: 66 },
+    const slotToSkillGap = 22;
+    const row1CardY = isBoostSelectionMode ? 445 : 420;
+    const row2TouchY = row1CardY + 66 + slotToSkillGap;
+    
+    const pickCards = isBoostSelectionMode ? [
+      { code: "POWER_UP", x: 35, y: row1CardY, w: 115, h: 66 },
+      { code: "MISSILE_UP", x: 167, y: row1CardY, w: 115, h: 66 },
+      { code: "FIRE_RATE", x: 300, y: row1CardY, w: 115, h: 66 }
+    ] : [
+      { code: "POWER_UP", x: 35, y: row1CardY, w: 115, h: 66 },
+      { code: "MISSILE_UP", x: 167, y: row1CardY, w: 115, h: 66 },
+      { code: "FIRE_RATE", x: 300, y: row1CardY, w: 115, h: 66 },
       { code: "SHIELD", x: 35, y: row2TouchY, w: 115, h: 66, active: player && player.shieldRemain > 0 },
       { code: "LASER_WEAPON", x: 167, y: row2TouchY, w: 115, h: 66, active: player && player.laserWeaponTimer > 0 },
       { code: "CLONE_SHIP", x: 300, y: row2TouchY, w: 115, h: 66, active: player && player.clonePlaneTimer > 0 }
@@ -5388,7 +5394,7 @@ function safeGameLoop(now) {
 
       ctx.restore();
 
-      // 1) "스킬 & 특수옵션" 문구 삭제 완료 (일반 스킬 화면일 때만 상단 타이틀 표시, 부스트 모드에서는 완전 삭제)
+      // 1) "스킬 & 특수옵션" 문구 삭제 완료 (일반 업그레이드 화면일 때만 표시, 부스트 모드에서는 완전 삭제)
       if (!isBoostSelectionMode) {
         ctx.textAlign = "center";
         ctx.fillStyle = "#00f5ff";
@@ -5396,20 +5402,21 @@ function safeGameLoop(now) {
         ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 282);
       }
 
-      // 2) 상태창과 랜덤뽑기 사이 여백 확보 + 3) 문구를 랜덤뽑기와 고정 스킬 사이로 이동
-      // 4) 문구 수정 ("랜덤 3번 또는 +5스킬") + 5) 폰트 크기 2단계 확대(16px) 및 깜빡임 효과
+      // 2) 내 비행기 상태창과 랜덤뽑기 사이에 랜덤뽑기 높이(85px)만큼 빈공간 확보
+      // 3) 문구를 랜덤뽑기와 고정 스킬 사이로 이동
+      // 4) 문구 수정 ("랜덤 3번 또는 +5스킬") + 5) 폰트 크기 2단계 키우고 깜빡이게 적용
       if (isBoostSelectionMode) {
         const isBlinking = Math.floor(curTime * 6) % 2 === 0;
         ctx.textAlign = "center";
         ctx.fillStyle = isBlinking ? "#ffe600" : "#ff007f";
-        ctx.font = `bold 16px ${FONT_FAMILY}`; // 기존보다 2단계 큼직하게 키움
-        ctx.fillText("★ 랜덤 3번 또는 +5스킬 ★", LOGICAL_WIDTH / 2, 485); // 랜덤뽑기(btnMult) 바로 아래이자 고정 스킬(row1Cards) 위쪽
+        ctx.font = `bold 16px ${FONT_FAMILY}`; // 기존보다 2단계 큼직하게 확대
+        ctx.fillText("★ 랜덤 3번 또는 +5스킬 ★", LOGICAL_WIDTH / 2, 492); // 랜덤뽑기 박스 바로 아래, 고정 스킬 카드 바로 위
       }
 
-      // 부스트 모드일 때 상태창(inspectBox 아래 Y: 270)과 랜덤뽑기 사이에 랜덤뽑기 높이(85px)만큼 여유 공간 확보
-      const btnMultY = isBoostSelectionMode ? 370 : 305;
+      // 부스트 모드일 때 룰렛 박스 위치를 상태창(inspectBox 아래 Y: 270)에서 충분히 띄움
+      const btnMultY = isBoostSelectionMode ? 385 : 305;
       const btnMult = { x: 35, y: btnMultY, w: 380, h: 85 };
-```[cite: 7]
+      
       if (curTime - lastMultRollTime >= 0.048) {
         lastMultRollTime = curTime;
         currentMultIndex = (currentMultIndex + 1) % shuffledMultiplierPool.length;
