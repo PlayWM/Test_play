@@ -3852,7 +3852,7 @@ function handlePointerDown(e) {
     }
 
     const slotToSkillGap = 22;
-    const row1CardY = isBoostSelectionMode ? 445 : 420;
+    const row1CardY = isBoostSelectionMode ? 510 : 420;
     const row2TouchY = row1CardY + 66 + slotToSkillGap;
     
     const pickCards = isBoostSelectionMode ? [
@@ -5409,13 +5409,13 @@ function safeGameLoop(now) {
         const isBlinking = Math.floor(curTime * 6) % 2 === 0;
         ctx.textAlign = "center";
         ctx.fillStyle = isBlinking ? "#ffe600" : "#ff007f";
-        ctx.font = `bold 16px ${FONT_FAMILY}`; // 기존보다 2단계 큼직하게 확대
-        ctx.fillText("★ 랜덤 3번 또는 +5스킬 ★", LOGICAL_WIDTH / 2, 492); // 랜덤뽑기 박스 바로 아래, 고정 스킬 카드 바로 위
+        ctx.font = `bold 16px ${FONT_FAMILY}`;
+        ctx.fillText("★ 3x RANDOM OR +5 SKILL ★", LOGICAL_WIDTH / 2, 495); // 룰렛과 단일 스킬 사이 공간에 배치
       }
 
-      // 부스트 모드일 때 룰렛 박스 위치를 상태창(inspectBox 아래 Y: 270)에서 충분히 띄움
-      const btnMultY = isBoostSelectionMode ? 385 : 305;
-      const btnMult = { x: 35, y: btnMultY, w: 380, h: 85 };
+      // 부스트 모드일 때 룰렛 박스 Y 좌표 (상단 여유 확보)
+      const btnMultY = isBoostSelectionMode ? 315 : 305;
+    const btnMult = { x: 35, y: btnMultY, w: 380, h: 85 };
       
       if (curTime - lastMultRollTime >= 0.048) {
         lastMultRollTime = curTime;
@@ -5462,7 +5462,8 @@ function safeGameLoop(now) {
       ctx.restore();
 
       const slotToSkillGap = 22;
-      const row1CardY = isBoostSelectionMode ? 445 : 420;
+      // 룰렛 박스(Y:315 + 높이:85 = 400)에 카드 높이(66px)만큼 여유를 주어 Y: 510에 배치 (겹침 완전 해소)
+      const row1CardY = isBoostSelectionMode ? 510 : 420;
       const row2Y = row1CardY + 66 + slotToSkillGap;
 
       const addLabel = isBoostSelectionMode ? "+5" : "+1";
