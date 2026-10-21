@@ -3839,7 +3839,8 @@ function handlePointerDown(e) {
       }
     }
 
-    const btnMult = { x: 35, y: 384, w: 380, h: 85 };
+    const btnMultY = isBoostSelectionMode ? 315 : 384;
+    const btnMult = { x: 35, y: btnMultY, w: 380, h: 85 };
     if (coords.x >= btnMult.x && coords.x <= btnMult.x + btnMult.w && coords.y >= btnMult.y && coords.y <= btnMult.y + btnMult.h) {
       const picked = shuffledMultiplierPool[currentMultIndex];
       if (picked.type === "PWR") player.powerStat += picked.val;
@@ -5405,11 +5406,17 @@ function safeGameLoop(now) {
       }
 
       if (isBoostSelectionMode) {
-        const isBlinking = Math.floor(curTime * 6) % 2 === 0;
+        // 주기를 6에서 12로 높여 기존보다 2배 더 빠르게 반짝이게 설정
+        const isBlinking = Math.floor(curTime * 12) % 2 === 0;
+        ctx.save();
         ctx.textAlign = "center";
+        // 네온 발광 효과 적용
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = isBlinking ? "#ffe600" : "#ff007f";
         ctx.fillStyle = isBlinking ? "#ffe600" : "#ff007f";
-        ctx.font = `bold 16px ${FONT_FAMILY}`;
-        ctx.fillText("★ 3x RANDOM OR +5 SKILLS ★", LOGICAL_WIDTH / 2, 492);
+        ctx.font = `bold 20px ${FONT_FAMILY}`; // 기존 16px 대비 2단계 큼직하게 확대
+        ctx.fillText("★ 3x RANDOM OR +5 SKILLS ★", LOGICAL_WIDTH / 2, 488); // 룰렛과 고정 스킬 사이 정중앙에 정확히 배치
+        ctx.restore();
       }
 
       const btnMultY = isBoostSelectionMode ? 315 : 384;
