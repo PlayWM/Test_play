@@ -3567,11 +3567,24 @@ if (type === 3) {
 let player = null;
 let bullets = [];
 let homingMissiles = [];
-let missileShards = []; // 미사일 파편 배열 추가
-// ... (중간 15줄 생략) ...
-let boostUpItem = null;
-let isBoostSelectionMode = false;
-let boostRandomSpinsLeft = 0;
+let missileShards = [];
+let stationaryLasers = [];
+let missileShadows = [];
+let rockDebrisList = [];
+let hitImpacts = [];
+let suckingEntities = [];
+let enemies = [];
+let bossMissiles = [];
+let bossDropItems = [];
+let twinFieldBolts = [];
+let enemyLightningShocks = [];
+let blackHoles = [];
+let currentBoss = null;
+let explosions = [];
+let activeLasers = [];
+let boostUpItem = null;           // 추가
+let isBoostSelectionMode = false; // 추가
+let boostRandomSpinsLeft = 0;     // 추가
 
 function initBattleState() {
   bullets = []; homingMissiles = []; missileShards = []; stationaryLasers = []; missileShadows = []; rockDebrisList = []; hitImpacts = []; suckingEntities = [];
