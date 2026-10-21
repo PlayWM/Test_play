@@ -5388,20 +5388,28 @@ function safeGameLoop(now) {
 
       ctx.restore();
 
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#00f5ff";
-      ctx.font = `bold 16px ${FONT_FAMILY}`;
-      ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 282);
-
-      if (isBoostSelectionMode) {
-        const isBlinking = Math.floor(curTime * 6) % 2 === 0;
-        ctx.fillStyle = isBlinking ? "#ffe600" : "#ff007f";
-        ctx.font = `bold 14px ${FONT_FAMILY}`;
-        ctx.fillText("★ BOOST REWARD: Choose 3x Random Spin OR +5 Skill! ★", LOGICAL_WIDTH / 2, 302);
+      // 1) "스킬 & 특수옵션" 문구 삭제 완료 (일반 스킬 화면일 때만 상단 타이틀 표시, 부스트 모드에서는 완전 삭제)
+      if (!isBoostSelectionMode) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#00f5ff";
+        ctx.font = `bold 16px ${FONT_FAMILY}`;
+        ctx.fillText("SKILLS & SPECIAL OPTIONS", LOGICAL_WIDTH / 2, 282);
       }
 
-      const btnMultY = isBoostSelectionMode ? 318 : 305;
+      // 2) 상태창과 랜덤뽑기 사이 여백 확보 + 3) 문구를 랜덤뽑기와 고정 스킬 사이로 이동
+      // 4) 문구 수정 ("랜덤 3번 또는 +5스킬") + 5) 폰트 크기 2단계 확대(16px) 및 깜빡임 효과
+      if (isBoostSelectionMode) {
+        const isBlinking = Math.floor(curTime * 6) % 2 === 0;
+        ctx.textAlign = "center";
+        ctx.fillStyle = isBlinking ? "#ffe600" : "#ff007f";
+        ctx.font = `bold 16px ${FONT_FAMILY}`; // 기존보다 2단계 큼직하게 키움
+        ctx.fillText("★ 랜덤 3번 또는 +5스킬 ★", LOGICAL_WIDTH / 2, 485); // 랜덤뽑기(btnMult) 바로 아래이자 고정 스킬(row1Cards) 위쪽
+      }
+
+      // 부스트 모드일 때 상태창(inspectBox 아래 Y: 270)과 랜덤뽑기 사이에 랜덤뽑기 높이(85px)만큼 여유 공간 확보
+      const btnMultY = isBoostSelectionMode ? 370 : 305;
       const btnMult = { x: 35, y: btnMultY, w: 380, h: 85 };
+```[cite: 7]
       if (curTime - lastMultRollTime >= 0.048) {
         lastMultRollTime = curTime;
         currentMultIndex = (currentMultIndex + 1) % shuffledMultiplierPool.length;
